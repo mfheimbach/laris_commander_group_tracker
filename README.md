@@ -7,7 +7,7 @@ Settings → Pages → Deploy from branch → `main` / root. Every commit is liv
 
 ## Adding data
 Edit the files in `data/` (the GitHub web editor is fine). Fields are separated by `;`, dates are `YYYY-MM-DD`.
-Decks can be referred to by id (`flight`, `chaos`, `grave`, `tokens`, `dragons`), full name, or pilot.
+Decks can be referred to by name (`Flyers`, `Demons`, `Zombies`, `Tokens`, `Dragons`) or by their original id (`flight`, `chaos`, `grave`, `tokens`, `dragons`).
 
 **`data/changes.csv`**: one row per swap.
 ```
