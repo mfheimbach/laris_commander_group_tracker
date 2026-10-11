@@ -1,0 +1,37 @@
+[
+  {
+    "id": "flight",
+    "name": "First Flight",
+    "colors": "WU",
+    "commander": "Isperia, Supreme Judge",
+    "pilot": ""
+  },
+  {
+    "id": "chaos",
+    "name": "Chaos Incarnate",
+    "colors": "BR",
+    "commander": "Kardur, Doomscourge",
+    "pilot": ""
+  },
+  {
+    "id": "grave",
+    "name": "Grave Danger",
+    "colors": "UB",
+    "commander": "Gisa and Geralf",
+    "pilot": ""
+  },
+  {
+    "id": "tokens",
+    "name": "Token Triumph",
+    "colors": "GW",
+    "commander": "Emmara, Soul of the Accord",
+    "pilot": ""
+  },
+  {
+    "id": "dragons",
+    "name": "Draconic Destruction",
+    "colors": "RG",
+    "commander": "Atarka, World Render",
+    "pilot": ""
+  }
+]

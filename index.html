@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Commander Legacy</title>
+<meta name="description" content="Our five 2022 Starter Commander decks, upgraded one card at a time.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">Starter Commander Decks 2022</p>
+    <h1 id="site-title">Commander Legacy</h1>
+    <p class="lede" id="site-sub">Five precons. Every game night, every deck changes one card. Watch them grow.</p>
+    <div class="stats" id="stats"></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section aria-labelledby="decks-h">
+    <h2 id="decks-h">The decks</h2>
+    <div class="deck-strip" id="deck-strip"></div>
+  </section>
+
+  <section aria-labelledby="tl-h">
+    <div class="section-head">
+      <h2 id="tl-h">The legacy so far</h2>
+      <p class="hint">Wins over time on top, card swaps per deck below. Tap any card to see it.</p>
+    </div>
+    <div class="timeline-scroll">
+      <div class="timeline" id="timeline"></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="deck-h">
+    <div class="section-head">
+      <h2 id="deck-h">Deck lists</h2>
+      <div class="tabs" id="tabs" role="tablist"></div>
+    </div>
+    <div id="deck-detail"></div>
+  </section>
+
+  <section aria-labelledby="st-h" id="stats-section">
+    <h2 id="st-h">Stats</h2>
+    <div id="stat-body"></div>
+  </section>
+
+  <p class="warn" id="warnings" hidden></p>
+</main>
+
+<footer class="wrap foot">
+  Card images © Wizards of the Coast, served by <a href="https://scryfall.com">Scryfall</a>. Unofficial fan page.
+</footer>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal-inner" role="dialog" aria-modal="true">
+    <button class="close" id="modal-close" aria-label="Close">×</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>
