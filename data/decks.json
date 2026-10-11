@@ -4,34 +4,39 @@
     "name": "Flyers",
     "colors": "WU",
     "commander": "Isperia, Supreme Judge",
-    "pilot": ""
+    "pilot": "",
+    "moxfield": "https://moxfield.com/decks/4Q9cz_jghUWpugMUvVvnPg"
   },
   {
     "id": "chaos",
     "name": "Demons",
     "colors": "BR",
     "commander": "Kardur, Doomscourge",
-    "pilot": ""
+    "pilot": "",
+    "moxfield": "https://moxfield.com/decks/SS1FP1cEiUKbPgDXgpxqlw"
   },
   {
     "id": "grave",
     "name": "Zombies",
     "colors": "UB",
     "commander": "Gisa and Geralf",
-    "pilot": ""
+    "pilot": "",
+    "moxfield": "https://moxfield.com/decks/jUsNywcDTEOObBYyu_VJcA"
   },
   {
     "id": "tokens",
     "name": "Tokens",
     "colors": "GW",
     "commander": "Emmara, Soul of the Accord",
-    "pilot": ""
+    "pilot": "",
+    "moxfield": "https://moxfield.com/decks/_j-4DSYte0iocP5Z65tTGQ"
   },
   {
     "id": "dragons",
     "name": "Dragons",
     "colors": "RG",
     "commander": "Atarka, World Render",
-    "pilot": ""
+    "pilot": "",
+    "moxfield": "https://moxfield.com/decks/UAgfGCZKqUqccw0fE_HRbA"
   }
 ]

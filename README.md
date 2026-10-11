@@ -27,6 +27,6 @@ Leave `decks` empty if all five decks played without names, and `winner` empty f
 
 Typos (unknown decks, a card that isn't in the deck, a card Scryfall doesn't know) show up in a red box at the bottom of the page.
 
-**Other files:** `data/decks.json` holds deck names, colours, starting commander and an optional `pilot`. `data/decks/*.txt` are the original lists (MTGO format; don't edit these, log swaps instead). `data/site.json` sets the title and subtitle.
+**Other files:** `data/decks.json` holds deck names, colours, starting commander, the Moxfield link and an optional `pilot`. `data/decks/*.txt` are the original lists (MTGO format; don't edit these, log swaps instead). `data/site.json` sets the title and subtitle.
 
 Reading the data in R: `data.table::fread("data/games.csv", sep = ";")`.

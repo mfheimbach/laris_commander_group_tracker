@@ -336,6 +336,7 @@ function renderDetail(){
       <button class="c" data-card="${esc(d.cur)}">${pic(d.cur,'normal','cmdimg',false)}</button>
       <h3>${esc(d.name)} ${pips(d.colors)}</h3>
       <p class="sub">${s.wins} ${s.wins === 1 ? 'win' : 'wins'} in ${s.played} ${s.played === 1 ? 'game' : 'games'} · ${s.swaps} ${s.swaps === 1 ? 'swap' : 'swaps'}${d.pilot ? ' · played by ' + esc(d.pilot) : ''}</p>
+      ${d.moxfield ? `<a class="mox" href="${esc(d.moxfield)}" target="_blank" rel="noopener">Full list on Moxfield ↗</a>` : ''}
       <h4 style="font:600 .8rem Inter;text-transform:uppercase;letter-spacing:.12em;color:var(--text-2);margin:18px 0 6px">History</h4>
       ${log}
     </div>
