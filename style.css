@@ -122,3 +122,12 @@ h1{font-size:clamp(2rem,5vw,3.2rem);line-height:1.1}
 .tl-cell .c{width:58px}
 .stat b.txt{font-size:1.15rem;line-height:1.25}
 @media (max-width:600px){.tl-label{padding:8px;font-size:.8rem}}
+.rankings{display:grid;grid-template-columns:1fr 1fr;gap:28px 40px}
+@media (max-width:860px){.rankings{grid-template-columns:1fr}}
+.rankings h3{font-size:1rem;margin:0 0 12px}
+.bars{max-width:none}
+.bars .rank{color:var(--muted);font-variant-numeric:tabular-nums;width:1.2em;text-align:right;flex:none}
+.bars .fair{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--text-2)}
+.dots{display:inline-flex;gap:3px;margin-left:6px;vertical-align:middle}
+.dots i{width:7px;height:7px;border-radius:50%;background:var(--c);display:inline-block}
+code{background:var(--surface-2);padding:1px 5px;border-radius:4px;font-size:.85em}

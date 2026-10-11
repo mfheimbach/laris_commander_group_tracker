@@ -58,13 +58,25 @@ async function load(){
   };
   state.find = find;
 
+  // decks column: "flight,chaos" or with players "Mo:flight,Anna:chaos"; winner: deck or player
   state.games = games.filter(g => g.date).map((g,i) => {
-    const ids = g.decks ? g.decks.split(',').map(s => s.trim()).filter(Boolean) : decks.map(d => d.id);
-    const ds = ids.map(id => { const d = find(id); if (!d) warn(`games.csv row ${i+2}: unknown deck "${id}"`); return d; }).filter(Boolean);
-    const w = g.winner ? find(g.winner) : null;
-    if (g.winner && !w) warn(`games.csv row ${i+2}: unknown winner "${g.winner}"`);
-    return {date:g.date, decks:ds.map(d => d.id), winner:w ? w.id : null, note:g.note || ''};
+    const entries = g.decks ? g.decks.split(',').map(s => s.trim()).filter(Boolean) : decks.map(d => d.id);
+    const seats = entries.map(e => {
+      const [a, b] = e.includes(':') ? e.split(':').map(s => s.trim()) : [null, e];
+      const d = find(b); if (!d) warn(`games.csv row ${i+2}: unknown deck "${b}"`);
+      return d ? {player:a || null, deck:d.id} : null;
+    }).filter(Boolean);
+    let winner = null, winnerPlayer = null;
+    if (g.winner){
+      const seat = seats.find(s => s.player && s.player.toLowerCase() === g.winner.toLowerCase());
+      const d = seat ? null : find(g.winner);
+      if (seat){ winner = seat.deck; winnerPlayer = seat.player; }
+      else if (d){ winner = d.id; winnerPlayer = (seats.find(s => s.deck === d.id) || {}).player || null; }
+      else warn(`games.csv row ${i+2}: unknown winner "${g.winner}"`);
+    }
+    return {date:g.date, seats, decks:seats.map(s => s.deck), winner, winnerPlayer, note:g.note || ''};
   });
+  state.players = [...new Set(state.games.flatMap(g => g.seats.map(s => s.player)).filter(Boolean))];
   state.changes = changes.filter(c => c.date).map((c,i) => {
     const d = find(c.deck); if (!d) warn(`changes.csv row ${i+2}: unknown deck "${c.deck}"`);
     return {date:c.date, deck:d ? d.id : null, out:c.out, in:c.in, note:c.note || '', row:i+2};
@@ -164,18 +176,27 @@ function deckStats(d){
   return {played:gs.length, wins, expected, swaps:d.swaps.length};
 }
 
+function playerStats(p){
+  const gs = state.games.filter(g => g.seats.some(s => s.player === p));
+  const wins = gs.filter(g => g.winnerPlayer === p).length;
+  const expected = gs.reduce((s,g) => s + (g.winner ? 1/g.seats.length : 0), 0);
+  const decks = [...new Set(gs.map(g => g.seats.find(s => s.player === p).deck))];
+  return {played:gs.length, wins, expected, decks};
+}
+const leaderOf = rows => {
+  const r = rows.filter(x => x.wins > 0).sort((a,b) => b.wins - a.wins);
+  return !r.length ? '–' : (r[1] && r[1].wins === r[0].wins ? 'Tied' : r[0].label);
+};
+
 /* ---------- render: hero + strip ---------- */
 const pips = colors => `<span class="pips">${[...colors].map(c => `<img src="https://svgs.scryfall.io/card-symbols/${c}.svg" alt="${c}">`).join('')}</span>`;
 
 function renderHero(){
   const games = state.games.length, nights = state.nights.length, swaps = state.changes.length;
-  let leader = '–';
-  if (games){
-    const best = state.decks.map(d => [d, deckStats(d).wins]).sort((a,b) => b[1]-a[1]);
-    leader = best[0][1] === 0 ? '–' : (best[1] && best[1][1] === best[0][1] ? 'Tied' : best[0][0].name);
-  }
+  const leader = leaderOf(state.decks.map(d => ({label:d.name, ...deckStats(d)})));
+  const topPlayer = leaderOf(state.players.map(p => ({label:p, ...playerStats(p)})));
   $('#stats').innerHTML = [
-    [nights, 'game nights'], [games, 'games played'], [swaps, 'cards swapped'], [leader, 'most wins'],
+    [nights, 'game nights'], [games, 'games played'], [swaps, 'cards swapped'], [leader, 'top deck'], ...(state.players.length ? [[topPlayer, 'top player']] : []),
   ].map(([v,l]) => `<div class="stat"><b${typeof v === 'string' && v.length > 3 ? ' class="txt"' : ''}>${esc(v)}</b><span>${l}</span></div>`).join('');
 }
 
@@ -215,7 +236,8 @@ function renderTimeline(){
       const w = gs.filter(g => g.winner === d.id).length;
       const sw = d.swaps.filter(s => s.date === c);
       let inner = '';
-      if (w) inner += `<span class="win">★ ${w > 1 ? w + ' wins' : 'Win'}</span>`;
+      if (w){ const who = [...new Set(gs.filter(g => g.winner === d.id).map(g => g.winnerPlayer).filter(Boolean))].join(', ');
+        inner += `<span class="win">★ ${w > 1 ? w + ' wins' : 'Win'}${who ? ' · ' + esc(who) : ''}</span>`; }
       inner += sw.map(s => `<button class="swap${s.isCmd ? ' cmdswap' : ''}" data-swap="${state.changes.indexOf(s)}" title="${esc(s.out || '—')} → ${esc(s.in || '—')}">
           ${s.out ? pic(s.out,'small','out') : ''}
           <span class="arr">→</span>
@@ -322,17 +344,35 @@ function renderDetail(){
 }
 
 /* ---------- render: stats ---------- */
+function bars(rows){
+  return `<div class="bars">` + rows.map(r => {
+    const rate = r.played ? r.wins / r.played : 0, exp = r.played ? r.expected / r.played : 0;
+    return `<div class="lab" style="--c:${r.color}"><span class="rank">${r.rank}</span>${r.dot ? '<i></i>' : ''}<span>${esc(r.label)}${r.sub || ''}</span></div>
+      <div class="track" title="Fair share: ${Math.round(exp*100)}%"><div class="fill" style="--c:${r.color};width:${rate*100}%"></div>
+        ${r.played ? `<span class="fair" style="left:${exp*100}%"></span>` : ''}</div>
+      <div class="val">${r.wins} / ${r.played} · ${Math.round(rate*100)}%</div>`;
+  }).join('') + `</div>`;
+}
+function ranked(rows){
+  rows.sort((a,b) => b.wins - a.wins || (b.played ? b.wins/b.played : 0) - (a.played ? a.wins/a.played : 0) || a.label.localeCompare(b.label));
+  rows.forEach((r,i) => r.rank = i && r.wins === rows[i-1].wins && r.wins/r.played === rows[i-1].wins/rows[i-1].played ? rows[i-1].rank : i + 1);
+  return rows;
+}
 function renderStats(){
   const body = $('#stat-body');
   if (!state.games.length){ body.innerHTML = `<p class="hint">Stats appear after the first logged game.</p>`; return; }
-  const rows = state.decks.map(d => ({d, ...deckStats(d)}));
-  body.innerHTML = `<h3 style="font-size:1rem;margin:0 0 12px">Win rate</h3><div class="bars">` + rows.map(r => {
-    const rate = r.played ? r.wins / r.played : 0, exp = r.played ? r.expected / r.played : 0;
-    return `<div class="lab" style="--c:${r.d.color}"><i></i>${esc(r.d.name)}</div>
-      <div class="track" title="Fair share: ${Math.round(exp*100)}%"><div class="fill" style="--c:${r.d.color};width:${rate*100}%"></div>
-        ${r.played ? `<span style="position:absolute;top:-3px;bottom:-3px;left:${exp*100}%;width:2px;background:var(--text-2)"></span>` : ''}</div>
-      <div class="val">${r.wins} / ${r.played} · ${Math.round(rate*100)}%</div>`;
-  }).join('') + `</div><p class="stat-note">The thin line marks a fair share: how often each deck would win if every game were a coin flip between the decks at the table. With this few games, treat any gap as noise.</p>`;
+  const deckRows = ranked(state.decks.map(d => ({label:d.name, color:d.color, dot:true, ...deckStats(d)})));
+  const byId = Object.fromEntries(state.decks.map(d => [d.id, d]));
+  const playerRows = ranked(state.players.map(p => {
+    const s = playerStats(p);
+    return {label:p, color:'var(--gold)', ...s,
+      sub:` <span class="dots">${s.decks.map(id => `<i title="${esc(byId[id].name)}" style="--c:${byId[id].color}"></i>`).join('')}</span>`};
+  }));
+  body.innerHTML = `<div class="rankings">
+    <div><h3>Decks</h3>${bars(deckRows)}</div>
+    <div><h3>Players</h3>${playerRows.length ? bars(playerRows)
+      : `<p class="hint">Add player names to games.csv (e.g. <code>Mo:dragons,Anna:flight</code>) to rank players.</p>`}</div>
+  </div><p class="stat-note">Ranked by wins, then win rate. The thin line marks a fair share: how often a deck or player would win if every game were a coin flip among the seats at the table. Dots show which decks a player has piloted. With this few games, treat any gap as noise.</p>`;
 }
 
 /* ---------- modal ---------- */

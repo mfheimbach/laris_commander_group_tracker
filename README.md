@@ -16,12 +16,14 @@ date;deck;out;in;note
 ```
 Swapping out the current commander makes the incoming card the new commander.
 
-**`data/games.csv`**: one row per game.
+**`data/games.csv`**: one row per game. Pair each player with their deck as `player:deck`:
 ```
 date;decks;winner;note
-2026-10-18;flight,chaos,grave,dragons;dragons;turn 9
+2026-10-18;Mo:dragons,Anna:flight,Ben:chaos,Lea:grave;Mo;turn 9
 ```
-Leave `decks` empty if all five played, and `winner` empty for an unfinished game.
+`winner` can be the player or the deck. Player names just need to be spelled the same each time; there's no player list to maintain.
+Plain deck ids without players (`flight,chaos`) still work, but those games only count toward the deck ranking.
+Leave `decks` empty if all five decks played without names, and `winner` empty for an unfinished game.
 
 Typos (unknown decks, a card that isn't in the deck, a card Scryfall doesn't know) show up in a red box at the bottom of the page.
 
