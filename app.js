@@ -15,6 +15,11 @@ const BASICS = new Set(['Plains','Island','Swamp','Mountain','Forest','Wastes'])
 let state = {decks:[], games:[], changes:[], nights:[], warnings:[], current:null};
 let cards = {};           // name -> scryfall info
 let activeDeck = null;
+const PLAYER_COLORS = ['#3987e5','#d95926','#199e70','#c98500','#d55181','#008300','#9085e9','#e66767'];
+const ui = (() => { try { return Object.assign({chart:'decks', metric:'wins', stats:'decks'}, JSON.parse(localStorage.getItem('ui-v1'))); } catch { return {chart:'decks', metric:'wins', stats:'decks'}; } })();
+const saveUi = () => { try { localStorage.setItem('ui-v1', JSON.stringify(ui)); } catch {} };
+const pColor = p => PLAYER_COLORS[state.players.indexOf(p)] || '#7c7a73';
+const joinNames = a => a.length < 2 ? (a[0] || '') : a.slice(0,-1).join(', ') + ' & ' + a[a.length-1];
 
 /* ---------- data loading ---------- */
 async function getText(path){
@@ -184,9 +189,27 @@ function playerStats(p){
   return {played:gs.length, wins, expected, decks};
 }
 const leaderOf = rows => {
-  const r = rows.filter(x => x.wins > 0).sort((a,b) => b.wins - a.wins);
-  return !r.length ? '–' : (r[1] && r[1].wins === r[0].wins ? 'Tied' : r[0].label);
+  const top = Math.max(0, ...rows.map(r => r.wins));
+  return top ? joinNames(rows.filter(r => r.wins === top).map(r => r.label)) : '–';
 };
+/* who played a deck most / best, and which deck a player played most / best */
+function crossStats(){
+  const cells = {};   // `${player}|${deck}` -> {games, wins}
+  for (const g of state.games) for (const st of g.seats){
+    if (!st.player) continue;
+    const k = st.player + '|' + st.deck, c = cells[k] || (cells[k] = {games:0, wins:0});
+    c.games++; if (g.winnerPlayer === st.player) c.wins++;
+  }
+  const pick = (pairs, f) => {           // pairs: [label, {games,wins}]
+    const m = Math.max(0, ...pairs.map(([,c]) => f(c)));
+    return m ? {names:pairs.filter(([,c]) => f(c) === m).map(([l]) => l), n:m} : null;
+  };
+  const forDeck = id => { const ps = state.players.map(p => [p, cells[p+'|'+id]]).filter(([,c]) => c);
+    return {most:pick(ps, c => c.games), best:pick(ps, c => c.wins)}; };
+  const forPlayer = p => { const ds = state.decks.map(d => [d.name, cells[p+'|'+d.id]]).filter(([,c]) => c);
+    return {most:pick(ds, c => c.games), best:pick(ds, c => c.wins)}; };
+  return {cells, forDeck, forPlayer};
+}
 
 /* ---------- render: hero + strip ---------- */
 const pips = colors => `<span class="pips">${[...colors].map(c => `<img src="https://svgs.scryfall.io/card-symbols/${c}.svg" alt="${c}">`).join('')}</span>`;
@@ -226,7 +249,7 @@ function renderTimeline(){
     ? `<div class="tl-colhead"><b>Start</b>Out of the box</div>`
     : `<div class="tl-colhead"><b>Night ${i}</b>${fmtShort(c)}</div>`).join('');
   if (state.games.length){
-    h += `<div class="tl-label tl-head" style="min-height:0">Wins</div><div class="tl-chart" id="tl-chart" style="grid-column:2/-1"></div>`;
+    h += `<div class="tl-label tl-head chart-label" style="min-height:0"><span>${ui.metric === 'power' ? 'Power' : 'Wins'}<small>${ui.chart === 'players' ? 'players' : 'decks'}</small></span></div><div class="tl-chart" id="tl-chart" style="grid-column:2/-1"></div>`;
   }
   for (const d of state.decks){
     h += `<div class="tl-row"><div class="tl-label" style="--c:${d.color}"><i></i>${esc(d.name)}</div>`;
@@ -254,37 +277,66 @@ function renderTimeline(){
   if (state.games.length) drawChart(cols);
 }
 
+function seg(name, opts){
+  return `<div class="seg" role="group">${opts.map(([v,l]) => `<button data-ui="${name}" data-v="${v}" aria-pressed="${ui[name] === v}">${l}</button>`).join('')}</div>`;
+}
+function bindSeg(root, rerender){
+  root.querySelectorAll('[data-ui]').forEach(b => b.onclick = () => { ui[b.dataset.ui] = b.dataset.v; saveUi(); rerender(); });
+}
+function renderChartControls(){
+  const el = $('#chart-controls'); if (!el) return;
+  el.innerHTML = state.games.length ? seg('chart', [['decks','Decks'],['players','Players']]) + seg('metric', [['wins','Wins'],['power','Power']]) : '';
+  bindSeg(el, () => { renderChartControls(); renderTimeline(); });
+}
+
+/* cumulative series per entity: wins, or power = wins minus fair share (1/seats per game played) */
+function chartSeries(cols){
+  const ents = ui.chart === 'players'
+    ? state.players.map(p => ({key:p, label:p, color:pColor(p), seat:g => g.seats.some(s => s.player === p), won:g => g.winnerPlayer === p}))
+    : state.decks.map(d => ({key:d.id, label:d.name, color:d.color, seat:g => g.decks.includes(d.id), won:g => g.winner === d.id}));
+  return ents.map(e => {
+    let acc = 0;
+    const v = cols.map((c,i) => {
+      if (i === 0) return 0;
+      for (const g of state.games.filter(g => g.date === c && g.winner && e.seat(g)))
+        acc += (e.won(g) ? 1 : 0) - (ui.metric === 'power' ? 1 / g.seats.length : 0);
+      return Math.round(acc * 100) / 100;
+    });
+    return {...e, v};
+  });
+}
+
 function drawChart(cols){
   const host = $('#tl-chart');
-  const series = state.decks.map(d => {
-    let acc = 0;
-    return {d, v:cols.map((c,i) => i === 0 ? 0 : (acc += state.games.filter(g => g.date === c && g.winner === d.id).length))};
-  });
-  const max = Math.max(1, ...series.flatMap(s => s.v));
+  const series = chartSeries(cols);
+  if (!series.length){ host.innerHTML = `<p class="hint" style="padding:16px">No player names logged yet.</p>`; return; }
+  const all = series.flatMap(s => s.v);
+  const max = Math.max(ui.metric === 'power' ? .5 : 1, ...all), min = Math.min(0, ...all);
+  const fmt = v => ui.metric === 'power' ? (v > 0 ? '+' : '') + v.toFixed(2).replace(/\.?0+$/,'') : String(v);
   const draw = () => {
-    const W = host.clientWidth, H = 170, pt = 16, pb = 14, n = cols.length;
-    const x = i => (i + .5) * W / n, y = v => pt + (H - pt - pb) * (1 - v / max);
-    const ticks = [...new Set([0, Math.round(max/2), max])];
-    let s = `<svg width="${W}" height="${H}" role="img" aria-label="Cumulative wins per deck">`;
-    s += ticks.map(t => `<line x1="0" x2="${W}" y1="${y(t)}" y2="${y(t)}" stroke="#2a2e37" stroke-width="1"/><text x="4" y="${y(t)-4}" fill="#7c7a73" font-size="10">${t}</text>`).join('');
-    // small vertical offset per deck so tied lines stay visible
+    const W = host.clientWidth, H = 180, pt = 16, pb = 14, n = cols.length;
+    const x = i => (i + .5) * W / n, y = v => pt + (H - pt - pb) * (max - v) / (max - min || 1);
+    const ticks = ui.metric === 'power' ? [...new Set([min, 0, max].map(t => Math.round(t*4)/4))] : [...new Set([0, Math.round(max/2), max])];
+    let s = `<svg width="${W}" height="${H}" role="img" aria-label="${ui.metric === 'power' ? 'Power' : 'Cumulative wins'} per ${ui.chart === 'players' ? 'player' : 'deck'}">`;
+    s += ticks.map(t => `<line x1="0" x2="${W}" y1="${y(t)}" y2="${y(t)}" stroke="${t === 0 && ui.metric === 'power' ? '#4a4f5c' : '#2a2e37'}" stroke-width="1"/><text x="4" y="${y(t)-4}" fill="#7c7a73" font-size="10">${fmt(t)}</text>`).join('');
     series.forEach((sr, k) => {
-      const off = (k - (series.length-1)/2) * 2.5;
+      const off = (k - (series.length-1)/2) * 2;   // keep tied lines visible
       const pts = sr.v.map((v,i) => `${x(i)},${y(v)+off}`).join(' ');
-      s += `<polyline points="${pts}" fill="none" stroke="${sr.d.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
-      s += sr.v.map((v,i) => `<circle cx="${x(i)}" cy="${y(v)+off}" r="4" fill="${sr.d.color}" stroke="#15171c" stroke-width="2"/>`).join('');
+      s += `<g class="ln" data-k="${k}"><polyline points="${pts}" fill="none" stroke="${sr.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+      s += sr.v.map((v,i) => `<circle cx="${x(i)}" cy="${y(v)+off}" r="4" fill="${sr.color}" stroke="#15171c" stroke-width="2"/>`).join('') + '</g>';
     });
     s += cols.map((c,i) => `<rect class="hit" data-i="${i}" x="${i*W/n}" y="0" width="${W/n}" height="${H}" fill="transparent"/>`).join('');
     s += `<line id="xh" x1="0" x2="0" y1="${pt-6}" y2="${H-pb}" stroke="#7c7a73" stroke-dasharray="3 3" visibility="hidden"/>`;
-    host.innerHTML = s + '</svg>';
+    host.innerHTML = s + '</svg>' + (ui.chart === 'players'
+      ? `<div class="legend">${series.map(sr => `<span style="--c:${sr.color}"><i></i>${esc(sr.label)}</span>`).join('')}</div>` : '');
     const tip = $('#tip'), xh = host.querySelector('#xh');
     host.querySelectorAll('.hit').forEach(r => {
       r.onmousemove = e => {
         const i = +r.dataset.i;
         xh.setAttribute('x1', x(i)); xh.setAttribute('x2', x(i)); xh.setAttribute('visibility','visible');
-        const rows = series.map(sr => [sr.d, sr.v[i]]).sort((a,b) => b[1]-a[1]);
+        const rows = series.map(sr => [sr, sr.v[i]]).sort((a,b) => b[1]-a[1]);
         tip.innerHTML = `<b>${i === 0 ? 'Start' : `Night ${i} · ${fmtShort(cols[i])}`}</b>` +
-          rows.map(([d,v]) => `<div class="r" style="--c:${d.color}"><span><i></i>${esc(d.name)}</span><span>${v}</span></div>`).join('');
+          rows.map(([sr,v]) => `<div class="r" style="--c:${sr.color}"><span><i></i>${esc(sr.label)}</span><span>${fmt(v)}</span></div>`).join('');
         tip.hidden = false;
         tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8) + 'px';
         tip.style.top = (e.clientY + 14) + 'px';
@@ -293,7 +345,8 @@ function drawChart(cols){
     });
   };
   draw();
-  new ResizeObserver(() => draw()).observe(host);
+  if (host._ro) host._ro.disconnect();
+  host._ro = new ResizeObserver(() => draw()); host._ro.observe(host);
 }
 
 /* ---------- render: deck detail ---------- */
@@ -348,32 +401,48 @@ function renderDetail(){
 function bars(rows){
   return `<div class="bars">` + rows.map(r => {
     const rate = r.played ? r.wins / r.played : 0, exp = r.played ? r.expected / r.played : 0;
-    return `<div class="lab" style="--c:${r.color}"><span class="rank">${r.rank}</span>${r.dot ? '<i></i>' : ''}<span>${esc(r.label)}${r.sub || ''}</span></div>
+    return `<div class="lab" style="--c:${r.color}"><span class="rank">${r.rank}</span><i></i><span>${esc(r.label)}${r.sub ? `<small>${r.sub}</small>` : ''}</span></div>
       <div class="track" title="Fair share: ${Math.round(exp*100)}%"><div class="fill" style="--c:${r.color};width:${rate*100}%"></div>
         ${r.played ? `<span class="fair" style="left:${exp*100}%"></span>` : ''}</div>
       <div class="val">${r.wins} / ${r.played} · ${Math.round(rate*100)}%</div>`;
   }).join('') + `</div>`;
 }
 function ranked(rows){
-  rows.sort((a,b) => b.wins - a.wins || (b.played ? b.wins/b.played : 0) - (a.played ? a.wins/a.played : 0) || a.label.localeCompare(b.label));
-  rows.forEach((r,i) => r.rank = i && r.wins === rows[i-1].wins && r.wins/r.played === rows[i-1].wins/rows[i-1].played ? rows[i-1].rank : i + 1);
+  const rate = r => r.played ? r.wins / r.played : 0;
+  rows.sort((a,b) => b.wins - a.wins || rate(b) - rate(a) || a.label.localeCompare(b.label));
+  rows.forEach((r,i) => r.rank = i && r.wins === rows[i-1].wins && rate(r) === rate(rows[i-1]) ? rows[i-1].rank : i + 1);
   return rows;
 }
+const subLine = x => [
+  x.most && `Most: ${esc(joinNames(x.most.names))} (${x.most.n})`,
+  x.best && `Best: ${esc(joinNames(x.best.names))} (${x.best.n} ${x.best.n === 1 ? 'win' : 'wins'})`,
+].filter(Boolean).join(' · ');
+
 function renderStats(){
   const body = $('#stat-body');
   if (!state.games.length){ body.innerHTML = `<p class="hint">Stats appear after the first logged game.</p>`; return; }
-  const deckRows = ranked(state.decks.map(d => ({label:d.name, color:d.color, dot:true, ...deckStats(d)})));
-  const byId = Object.fromEntries(state.decks.map(d => [d.id, d]));
-  const playerRows = ranked(state.players.map(p => {
-    const s = playerStats(p);
-    return {label:p, color:'var(--gold)', ...s,
-      sub:` <span class="dots">${s.decks.map(id => `<i title="${esc(byId[id].name)}" style="--c:${byId[id].color}"></i>`).join('')}</span>`};
-  }));
-  body.innerHTML = `<div class="rankings">
-    <div><h3>Decks</h3>${bars(deckRows)}</div>
-    <div><h3>Players</h3>${playerRows.length ? bars(playerRows)
-      : `<p class="hint">Add player names to games.csv (e.g. <code>Mo:dragons,Anna:flight</code>) to rank players.</p>`}</div>
-  </div><p class="stat-note">Ranked by wins, then win rate. The thin line marks a fair share: how often a deck or player would win if every game were a coin flip among the seats at the table. Dots show which decks a player has piloted. With this few games, treat any gap as noise.</p>`;
+  const cx = crossStats();
+  const mode = state.players.length ? ui.stats : 'decks';
+  const rows = mode === 'players'
+    ? ranked(state.players.map(p => ({label:p, color:pColor(p), ...playerStats(p), sub:subLine(cx.forPlayer(p))})))
+    : ranked(state.decks.map(d => ({label:d.name, color:d.color, ...deckStats(d), sub:subLine(cx.forDeck(d.id))})));
+
+  let matrix = '';
+  if (state.players.length){
+    matrix = `<h3 class="sub-h">Who played what</h3><div class="mx-scroll"><table class="mx"><thead><tr><th></th>${state.decks.map(d =>
+      `<th style="--c:${d.color}"><i></i>${esc(d.name)}</th>`).join('')}</tr></thead><tbody>${state.players.map(p =>
+      `<tr><th style="--c:${pColor(p)}"><i></i>${esc(p)}</th>${state.decks.map(d => {
+        const c = cx.cells[p+'|'+d.id];
+        return c ? `<td class="has${c.wins ? ' won' : ''}" title="${esc(p)} on ${esc(d.name)}: ${c.wins} of ${c.games}">${c.wins ? '★'.repeat(Math.min(c.wins,3)) + ' ' : ''}${c.wins}/${c.games}</td>` : '<td></td>';
+      }).join('')}</tr>`).join('')}</tbody></table></div>
+      <p class="stat-note">Wins / games for each player on each deck.</p>`;
+  }
+
+  body.innerHTML = `${state.players.length ? `<div class="stat-ctl">${seg('stats', [['decks','Decks'],['players','Players']])}</div>` : ''}
+    ${bars(rows)}
+    <p class="stat-note">Ranked by wins, then win rate. The thin line marks a fair share: how often each ${mode === 'players' ? 'player' : 'deck'} would win if every game were a coin flip among the seats at the table. Only four of the five decks play each game, so a deck sitting out doesn't lose anything. With this few games, treat any gap as noise.</p>
+    ${matrix}`;
+  bindSeg(body, renderStats);
 }
 
 /* ---------- modal ---------- */
@@ -396,7 +465,7 @@ addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 /* ---------- boot ---------- */
 function renderAll(){
-  renderHero(); renderStrip(); renderTimeline(); renderTabs(); renderDetail(); renderStats();
+  renderHero(); renderStrip(); renderChartControls(); renderTimeline(); renderTabs(); renderDetail(); renderStats();
   const w = $('#warnings');
   if (state.warnings.length){ w.hidden = false; w.innerHTML = '<b>Data check:</b><br>' + [...new Set(state.warnings)].map(esc).join('<br>'); }
 }
