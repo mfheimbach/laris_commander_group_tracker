@@ -11,43 +11,65 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="hero">
+<nav class="topnav" aria-label="Sections">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top" id="nav-brand">Commander Legacy</a>
+    <div class="nav-links">
+      <a href="#latest">Latest night</a>
+      <a href="#standings">Standings</a>
+      <a href="#evolution">Evolution</a>
+      <a href="#decks">Decks</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
   <div class="wrap">
-    <p class="eyebrow">Starter Commander Decks 2022</p>
+    <p class="eyebrow">Starter Commander Decks 2022 · a legacy campaign</p>
     <h1 id="site-title">Commander Legacy</h1>
-    <p class="lede" id="site-sub">Five precons. Every game night, every deck changes one card. Watch them grow.</p>
-    <div class="stats" id="stats"></div>
+    <p class="headline" id="headline"></p>
+    <p class="facts" id="facts"></p>
   </div>
 </header>
 
 <main class="wrap">
-  <section aria-labelledby="decks-h">
-    <h2 id="decks-h">The decks</h2>
-    <div class="deck-strip" id="deck-strip"></div>
+  <!-- 1. what just happened -->
+  <section id="latest" aria-labelledby="latest-h">
+    <div class="section-head">
+      <div><p class="kicker">Chapter 1</p><h2 id="latest-h">The latest night</h2></div>
+      <div class="night-nav" id="night-nav"></div>
+    </div>
+    <div id="night"></div>
   </section>
 
-  <section aria-labelledby="tl-h">
+  <!-- 2. who's winning -->
+  <section id="standings" aria-labelledby="st-h">
     <div class="section-head">
-      <h2 id="tl-h">The legacy so far</h2>
-      <div class="ctl-row" id="chart-controls"></div>
+      <div><p class="kicker">Chapter 2</p><h2 id="st-h">Standings</h2></div>
+      <div id="who-toggle"></div>
     </div>
-    <p class="hint tl-hint">Wins over time on top, card swaps per deck below. Tap any card to see it. <b>Power</b> = wins minus a fair share (¼ per game at a four-player table), so sitting out a night costs nothing.</p>
-    <div class="timeline-scroll">
+    <div class="standings card" id="standings-body"></div>
+  </section>
+
+  <!-- 3. how the decks changed -->
+  <section id="evolution" aria-labelledby="ev-h">
+    <div class="section-head">
+      <div><p class="kicker">Chapter 3</p><h2 id="ev-h">How the decks evolved</h2></div>
+      <p class="hint">Every swap, night by night. Faded card out, bright card in. Tap to compare.</p>
+    </div>
+    <div class="timeline-scroll card">
       <div class="timeline" id="timeline"></div>
     </div>
   </section>
 
-  <section aria-labelledby="deck-h">
+  <!-- 4. explore -->
+  <section id="decks" aria-labelledby="deck-h">
     <div class="section-head">
-      <h2 id="deck-h">Deck lists</h2>
-      <div class="tabs" id="tabs" role="tablist"></div>
+      <div><p class="kicker">Chapter 4</p><h2 id="deck-h">The decks today</h2></div>
+      <p class="hint">Pick a deck to see its current list.</p>
     </div>
+    <div class="deck-strip" id="deck-strip" role="tablist"></div>
     <div id="deck-detail"></div>
-  </section>
-
-  <section aria-labelledby="st-h" id="stats-section">
-    <h2 id="st-h">Stats</h2>
-    <div id="stat-body"></div>
   </section>
 
   <p class="warn" id="warnings" hidden></p>
