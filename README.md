@@ -30,3 +30,5 @@ Typos (unknown decks, a card that isn't in the deck, a card Scryfall doesn't kno
 **Other files:** `data/decks.json` holds deck names, colours, starting commander, the Moxfield link and an optional `pilot`. `data/decks/*.txt` are the original lists (MTGO format; don't edit these, log swaps instead). `data/site.json` sets the title and subtitle.
 
 Reading the data in R: `data.table::fread("data/games.csv", sep = ";")`.
+
+**After changing `app.js` or `style.css`:** bump the `?v=` number on both links in `index.html`, otherwise browsers may combine the new page with old cached files.
