@@ -241,7 +241,7 @@ function renderHero(){
     const top = leaders(state.decks.map(d => ({label:d.name, ...deckStats(d)})));
     const topP = leaders(state.players.map(p => ({label:p, ...playerStats(p)})));
     headline = `${who.length ? who.join(', ') : 'No winner yet'} on night ${nightNo(lastDate)}. ` +
-      (top ? `${esc(top.names)} ${top.count > 1 ? 'share the deck lead' : 'leads the decks'}` : '') +
+      (top ? `${esc(top.names)} ${top.count > 1 ? 'share the deck lead' : 'lead the decks'}` : '') +
       (topP ? `; ${esc(topP.names)} ${topP.count > 1 ? 'share the player lead' : 'leads the players'}.` : '.');
   }
   $('#headline').innerHTML = headline;
