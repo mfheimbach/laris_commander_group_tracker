@@ -1,227 +1,19 @@
-/* Commander Legacy tracker. Plain JS, no build step.
-   Data lives in /data; card images come from Scryfall in the browser. */
+/* Commander Legacy — public page. Reads top to bottom:
+   headline → up next (when a menu exists) → game nights → standings → the decks today.
+   Data and card helpers come from core.js. */
 (() => {
 'use strict';
+const {$, esc, state, TYPE_ORDER, BASICS, FLAG_TEXT, fmtDate, fmtShort, joinNames, plural, dot,
+       load, loadCards, info, img, pic, typeOf, ready, deckById, hasMenu, nightNo, pColor, cmdAt,
+       deckStats, playerStats, crossStats} = CL;
 
-const $ = s => document.querySelector(s);
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const COLORS = {flight:'--flight', chaos:'--chaos', grave:'--grave', tokens:'--tokens', dragons:'--dragons'};
-const FALLBACK = ['#3987e5','#d6463f','#9085e9','#199e70','#c98500'];
-const fmtDate = d => new Date(d + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'});
-const fmtShort = d => new Date(d + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric', month:'short'});
-const TYPE_ORDER = ['Commander','Creature','Planeswalker','Instant','Sorcery','Artifact','Enchantment','Battle','Land','Other'];
-const BASICS = new Set(['Plains','Island','Swamp','Mountain','Forest','Wastes']);
-
-let state = {decks:[], games:[], changes:[], nights:[], warnings:[], current:null};
-let cards = {};           // name -> scryfall info
-let activeDeck = null;
-const PLAYER_COLORS = ['#3987e5','#d95926','#199e70','#c98500','#d55181','#008300','#9085e9','#e66767'];
-const ui = (() => { try { return Object.assign({who:'decks', metric:'wins'}, JSON.parse(localStorage.getItem('ui-v1'))); } catch { return {who:'decks', metric:'wins'}; } })();
-let nightIdx = null;   // which night the recap shows (null = latest)
+const DEFAULT_UI = {who:'decks', metric:'wins', cards:'all'};
+const ui = (() => { try { return Object.assign({}, DEFAULT_UI, JSON.parse(localStorage.getItem('ui-v1'))); } catch { return {...DEFAULT_UI}; } })();
 const saveUi = () => { try { localStorage.setItem('ui-v1', JSON.stringify(ui)); } catch {} };
-const pColor = p => PLAYER_COLORS[state.players.indexOf(p)] || '#7c7a73';
-const joinNames = a => a.length < 2 ? (a[0] || '') : a.slice(0,-1).join(', ') + ' & ' + a[a.length-1];
+let activeDeck = null, menuDeck = null;
+let nightIdx = null;   // which night the recap shows (null = latest)
 
-/* ---------- data loading ---------- */
-async function getText(path){
-  const r = await fetch(path, {cache:'no-store'});
-  if (!r.ok) throw new Error(path + ': ' + r.status);
-  return r.text();
-}
-function parseCSV(txt){
-  const lines = txt.replace(/\r/g,'').split('\n').filter(l => l.trim() && !l.trim().startsWith('#'));
-  if (!lines.length) return [];
-  const head = lines.shift().split(';').map(h => h.trim().toLowerCase());
-  return lines.map(l => {
-    const v = l.split(';'); const o = {};
-    head.forEach((h,i) => o[h] = (v[i] ?? '').trim().replace(/^"(.*)"$/,'$1'));
-    return o;
-  });
-}
-function parseList(txt){
-  return txt.replace(/\r/g,'').split('\n').map(l => l.trim()).filter(Boolean).map(l => {
-    const m = l.match(/^(\d+)x?\s+(.+)$/); return m ? {qty:+m[1], name:m[2].trim()} : {qty:1, name:l};
-  });
-}
-
-async function load(){
-  const [site, decks, games, changes] = await Promise.all([
-    getText('data/site.json').then(JSON.parse).catch(() => ({})),
-    getText('data/decks.json').then(JSON.parse),
-    getText('data/games.csv').then(parseCSV),
-    getText('data/changes.csv').then(parseCSV),
-  ]);
-  if (site.title){ $('#site-title').textContent = site.title; $('#nav-brand').textContent = site.title; document.title = site.title; }
-  for (const [i,d] of decks.entries()){
-    d.list = parseList(await getText(`data/decks/${d.id}.txt`));
-    d.color = getComputedStyle(document.documentElement).getPropertyValue(COLORS[d.id] || '').trim() || FALLBACK[i % FALLBACK.length];
-  }
-  state.decks = decks;
-  const find = key => {
-    const k = (key||'').toLowerCase();
-    return decks.find(d => d.id.toLowerCase() === k || d.name.toLowerCase() === k || (d.pilot && d.pilot.toLowerCase() === k));
-  };
-  state.find = find;
-
-  // decks column: "flight,chaos" or with players "Mo:flight,Anna:chaos"; winner: deck or player
-  state.games = games.filter(g => g.date).map((g,i) => {
-    const entries = g.decks ? g.decks.split(',').map(s => s.trim()).filter(Boolean) : decks.map(d => d.id);
-    const seats = entries.map(e => {
-      const [a, b] = e.includes(':') ? e.split(':').map(s => s.trim()) : [null, e];
-      const d = find(b); if (!d) warn(`games.csv row ${i+2}: unknown deck "${b}"`);
-      return d ? {player:a || null, deck:d.id} : null;
-    }).filter(Boolean);
-    let winner = null, winnerPlayer = null;
-    if (g.winner){
-      const seat = seats.find(s => s.player && s.player.toLowerCase() === g.winner.toLowerCase());
-      const d = seat ? null : find(g.winner);
-      if (seat){ winner = seat.deck; winnerPlayer = seat.player; }
-      else if (d){ winner = d.id; winnerPlayer = (seats.find(s => s.deck === d.id) || {}).player || null; }
-      else warn(`games.csv row ${i+2}: unknown winner "${g.winner}"`);
-    }
-    return {date:g.date, seats, decks:seats.map(s => s.deck), winner, winnerPlayer, note:g.note || ''};
-  });
-  state.players = [...new Set(state.games.flatMap(g => g.seats.map(s => s.player)).filter(Boolean))];
-  state.changes = changes.filter(c => c.date).map((c,i) => {
-    const d = find(c.deck); if (!d) warn(`changes.csv row ${i+2}: unknown deck "${c.deck}"`);
-    return {date:c.date, deck:d ? d.id : null, out:c.out, in:c.in, note:c.note || '', row:i+2};
-  }).filter(c => c.deck);
-  state.nights = [...new Set([...state.games.map(g => g.date), ...state.changes.map(c => c.date)])].sort();
-  replay();
-}
-function warn(msg){ state.warnings.push(msg); }
-
-/* Apply all swaps in order to get each deck's current list. */
-function replay(){
-  for (const d of state.decks){
-    const m = new Map(); d.list.forEach(c => m.set(c.name, {qty:c.qty, added:null}));
-    d.commander0 = d.commander;
-    d.cur = d.commander; d.removed = []; d.swaps = [];
-    const chs = state.changes.filter(c => c.deck === d.id).sort((a,b) => a.date.localeCompare(b.date));
-    for (const c of chs){
-      c.isCmd = false;
-      if (c.out){
-        const key = [...m.keys()].find(k => k.toLowerCase() === c.out.toLowerCase());
-        if (!key){ warn(`changes.csv row ${c.row}: "${c.out}" is not in ${d.name} at that point (typo?)`); }
-        else {
-          if (key === d.cur){ c.isCmd = true; d.cur = c.in || d.cur; }
-          const e = m.get(key); e.qty -= 1; if (e.qty <= 0) m.delete(key);
-          d.removed.push({name:key, date:c.date});
-        }
-      }
-      if (c.in){
-        const key = [...m.keys()].find(k => k.toLowerCase() === c.in.toLowerCase()) || c.in;
-        const e = m.get(key) || {qty:0, added:null}; e.qty += 1; e.added = c.date; m.set(key, e);
-        d.removed = d.removed.filter(r => r.name.toLowerCase() !== key.toLowerCase());
-      }
-      d.swaps.push(c);
-    }
-    d.now = m;
-  }
-}
-
-/* ---------- Scryfall ---------- */
-const CACHE_KEY = 'sfcache-v1', WEEK = 7*864e5;
-function readCache(){ try { return JSON.parse(localStorage.getItem(CACHE_KEY)) || {}; } catch { return {}; } }
-function writeCache(c){ try { localStorage.setItem(CACHE_KEY, JSON.stringify(c)); } catch {} }
-const fuzzyImg = (name, v='normal') => `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(name)}&format=image&version=${v}`;
-
-function slim(card){
-  const f = card.image_uris ? card : (card.card_faces && card.card_faces[0]) || {};
-  const iu = f.image_uris || {};
-  return {name:card.name, type:card.type_line || f.type_line || '', cmc:card.cmc ?? 0,
-          small:iu.small, normal:iu.normal, art:iu.art_crop, uri:card.scryfall_uri, t:Date.now()};
-}
-async function loadCards(){
-  const names = new Set();
-  for (const d of state.decks){ d.list.forEach(c => names.add(c.name)); }
-  state.changes.forEach(c => { if (c.in) names.add(c.in); if (c.out) names.add(c.out); });
-  const cache = readCache();
-  const need = [];
-  for (const n of names){
-    const hit = cache[n.toLowerCase()];
-    if (hit && Date.now() - hit.t < WEEK) cards[n.toLowerCase()] = hit; else need.push(n);
-  }
-  for (let i = 0; i < need.length; i += 75){
-    const chunk = need.slice(i, i+75);
-    try {
-      const r = await fetch('https://api.scryfall.com/cards/collection', {
-        method:'POST', headers:{'Content-Type':'application/json','Accept':'application/json'},
-        body:JSON.stringify({identifiers:chunk.map(name => ({name}))})});
-      const j = await r.json();
-      for (const c of j.data || []){
-        const s = slim(c);
-        const key = chunk.find(n => n.toLowerCase() === c.name.toLowerCase() || c.name.toLowerCase().startsWith(n.toLowerCase() + ' //'));
-        cards[(key || c.name).toLowerCase()] = s; cache[(key || c.name).toLowerCase()] = s;
-      }
-      for (const nf of j.not_found || []) warn(`Scryfall doesn't know "${nf.name}" (typo?)`);
-    } catch(e){ console.warn('Scryfall', e); }
-    if (i + 75 < need.length) await new Promise(r => setTimeout(r, 120));
-  }
-  writeCache(cache);
-}
-const info = n => cards[(n||'').toLowerCase()] || {};
-let cardsReady = false;
-const img = (n, v='normal') => info(n)[v] || (cardsReady ? fuzzyImg(n, v === 'art' ? 'art_crop' : v) : '');
-/* <img> once we know the URL, a named placeholder before that */
-const pic = (n, v, cls='', lazy=true) => { const u = img(n, v); return u ? `<img${cls ? ` class="${cls}"` : ''} src="${esc(u)}" alt="${esc(n)}"${lazy ? ' loading="lazy"' : ''}>` : `<span class="ph ${cls}">${esc(n)}</span>`; };
-function typeOf(n){
-  const t = info(n).type || '';
-  if (!t) return 'Other';
-  const front = t.split('//')[0];
-  for (const k of ['Land','Creature','Planeswalker','Battle','Instant','Sorcery','Artifact','Enchantment']) if (front.includes(k)) return k;
-  return 'Other';
-}
-
-/* ---------- derived numbers ---------- */
-function deckStats(d){
-  const gs = state.games.filter(g => g.decks.includes(d.id));
-  const wins = gs.filter(g => g.winner === d.id).length;
-  const expected = gs.reduce((s,g) => s + (g.winner ? 1/g.decks.length : 0), 0);
-  return {played:gs.length, wins, expected, swaps:d.swaps.length};
-}
-
-function playerStats(p){
-  const gs = state.games.filter(g => g.seats.some(s => s.player === p));
-  const wins = gs.filter(g => g.winnerPlayer === p).length;
-  const expected = gs.reduce((s,g) => s + (g.winner ? 1/g.seats.length : 0), 0);
-  const decks = [...new Set(gs.map(g => g.seats.find(s => s.player === p).deck))];
-  return {played:gs.length, wins, expected, decks};
-}
-const leaderOf = rows => {
-  const top = Math.max(0, ...rows.map(r => r.wins));
-  return top ? joinNames(rows.filter(r => r.wins === top).map(r => r.label)) : '–';
-};
-/* who played a deck most / best, and which deck a player played most / best */
-function crossStats(){
-  const cells = {};   // `${player}|${deck}` -> {games, wins}
-  for (const g of state.games) for (const st of g.seats){
-    if (!st.player) continue;
-    const k = st.player + '|' + st.deck, c = cells[k] || (cells[k] = {games:0, wins:0});
-    c.games++; if (g.winnerPlayer === st.player) c.wins++;
-  }
-  const pick = (pairs, f) => {           // pairs: [label, {games,wins}]
-    const m = Math.max(0, ...pairs.map(([,c]) => f(c)));
-    return m ? {names:pairs.filter(([,c]) => f(c) === m).map(([l]) => l), n:m} : null;
-  };
-  const forDeck = id => { const ps = state.players.map(p => [p, cells[p+'|'+id]]).filter(([,c]) => c);
-    return {most:pick(ps, c => c.games), best:pick(ps, c => c.wins)}; };
-  const forPlayer = p => { const ds = state.decks.map(d => [d.name, cells[p+'|'+d.id]]).filter(([,c]) => c);
-    return {most:pick(ds, c => c.games), best:pick(ds, c => c.wins)}; };
-  return {cells, forDeck, forPlayer};
-}
-
-
-/* ======================================================================
-   RENDER — the page reads as a story:
-   headline → latest night → standings → evolution → the decks today
-   ====================================================================== */
 const pips = colors => `<span class="pips">${[...colors].map(c => `<img src="https://svgs.scryfall.io/card-symbols/${c}.svg" alt="${c}">`).join('')}</span>`;
-const deckById = id => state.decks.find(d => d.id === id);
-const plural = (n, w, p = w + 's') => `${n} ${n === 1 ? w : p}`;
-const dot = c => `<i class="dot" style="--c:${c}"></i>`;
-const nightNo = date => state.nights.indexOf(date) + 1;
-
 function seg(name, opts, label){
   return `<div class="seg" role="group" aria-label="${label}">${opts.map(([v,l]) =>
     `<button data-ui="${name}" data-v="${v}" aria-pressed="${ui[name] === v}">${l}</button>`).join('')}</div>`;
@@ -229,10 +21,19 @@ function seg(name, opts, label){
 function bindSeg(root, rerender){
   root.querySelectorAll('[data-ui]').forEach(b => b.onclick = () => { ui[b.dataset.ui] = b.dataset.v; saveUi(); rerender(); });
 }
+function bindCards(root){
+  root.querySelectorAll('[data-swap]').forEach(b => b.onclick = () => showSwap(state.changes[+b.dataset.swap]));
+  root.querySelectorAll('[data-card]').forEach(b => b.onclick = () => showCard(b.dataset.card, b.dataset.why));
+}
 
-/* ---------- hero: one generated sentence instead of a wall of tiles ---------- */
+/* ---------- hero: one generated sentence ---------- */
+function leaders(rows){
+  const top = Math.max(0, ...rows.map(r => r.wins));
+  if (!top) return null;
+  const names = rows.filter(r => r.wins === top).map(r => r.label);
+  return {names:joinNames(names), count:names.length};
+}
 function renderHero(){
-  const nights = state.nights.length, games = state.games.length;
   const lastDate = state.games.length ? state.games[state.games.length - 1].date : null;
   let headline = 'Five precons. Every game night, every deck changes a few cards. Watch them grow.';
   if (lastDate){
@@ -245,26 +46,65 @@ function renderHero(){
       (topP ? `; ${esc(topP.names)} ${topP.count > 1 ? 'share the player lead' : 'leads the players'}.` : '.');
   }
   $('#headline').innerHTML = headline;
-  $('#facts').innerHTML = [plural(nights, 'night'), plural(games, 'game'), plural(state.changes.length, 'card swap'), plural(state.players.length, 'player')]
-    .map(x => `<span>${x}</span>`).join('');
-}
-function leaders(rows){
-  const top = Math.max(0, ...rows.map(r => r.wins));
-  if (!top) return null;
-  const names = rows.filter(r => r.wins === top).map(r => r.label);
-  return {names:joinNames(names), count:names.length, wins:top};
+  $('#facts').innerHTML = [plural(state.nights.length, 'night'), plural(state.games.length, 'game'),
+    plural(state.changes.length, 'card swap'), plural(state.players.length, 'player')].map(x => `<span>${x}</span>`).join('');
 }
 
-/* ---------- chapter 1: one night at a time ---------- */
+/* ---------- up next: the menu for the coming night ---------- */
+function renderUpNext(){
+  const decks = state.decks.filter(d => hasMenu(d.id));
+  $('#upnext').hidden = $('#nav-upnext').hidden = !decks.length;
+  if (!decks.length) return;
+  if (!decks.some(d => d.id === menuDeck)) menuDeck = decks[0].id;
+  const d = deckById(menuDeck), m = state.menu[d.id];
+  const row = (x, kind) => {
+    const gc = kind === 'add' && info(x.card).gc;
+    return `<li><button class="opt" data-card="${esc(x.card)}" data-why="${esc(x.reason)}">${pic(x.card, 'small', 'opt-img')}
+      <span class="opt-txt"><b>${esc(x.card)}</b>${gc ? ` <span class="gc" title="${FLAG_TEXT.gc}">🔥 Game Changer</span>` : ''}${x.reason ? `<small>${esc(x.reason)}</small>` : ''}</span></button></li>`;
+  };
+  $('#upnext-body').innerHTML = `
+    <div class="chips" role="tablist">${decks.map(x => `<button class="chip${x.id === d.id ? ' on' : ''}" role="tab" aria-selected="${x.id === d.id}" data-menu="${x.id}" style="--c:${x.color}">${dot(x.color)}${esc(x.name)}</button>`).join('')}</div>
+    <div class="card pad menu" style="--c:${d.color}">
+      <div class="menu-head"><p class="brief">${m.brief ? `“${esc(m.brief)}”` : `Options for the ${esc(d.name)}`}</p>
+        <span class="pill">Swap ${m.picks} ${m.picks === 1 ? 'card' : 'cards'}</span></div>
+      <div class="menu-cols">
+        <div><h3 class="card-h">Could go · ${m.cut.length}</h3><ul class="opts">${m.cut.map(x => row(x, 'cut')).join('') || '<li class="hint">Open choice.</li>'}</ul></div>
+        <div><h3 class="card-h">Could come in · ${m.add.length}</h3><ul class="opts">${m.add.map(x => row(x, 'add')).join('') || '<li class="hint">Open choice.</li>'}</ul></div>
+      </div>
+    </div>`;
+  $('#upnext-body').querySelectorAll('[data-menu]').forEach(b => b.onclick = () => { menuDeck = b.dataset.menu; renderUpNext(); });
+  bindCards($('#upnext-body'));
+}
+
+/* ---------- game nights: a compact campaign map picks the night, the recap shows it ---------- */
+function renderCampaign(){
+  const host = $('#campaign');
+  if (!state.nights.length){ host.innerHTML = ''; return; }
+  const sel = nightIdx ?? state.nights.length - 1;
+  const cell = (d, date, i) => {
+    const gs = state.games.filter(g => g.date === date && g.decks.includes(d.id));
+    const won = gs.some(g => g.winner === d.id), sw = d.swaps.filter(s => s.date === date);
+    const what = won ? 'won' : gs.length ? 'played' : 'sat out';
+    return `<button class="cc ${won ? 'won' : gs.length ? 'played' : 'out'}${i === sel ? ' sel' : ''}" data-n="${i}" style="--c:${d.color}"
+      title="${esc(d.name)}, night ${i+1}: ${what}${sw.length ? `, ${plural(sw.length, 'swap')}` : ''}"><span class="mk">${won ? '★' : gs.length ? '●' : '○'}</span>${sw.length ? `<small class="${sw.some(s => s.isCmd) ? 'cmd' : ''}">${sw.length}</small>` : ''}</button>`;
+  };
+  host.innerHTML = `<div class="camp">
+      <div class="camp-labels"><div class="camp-corner"></div>${state.decks.map(d => `<div class="camp-label">${dot(d.color)}${esc(d.name)}</div>`).join('')}</div>
+      <div class="camp-scroll"><div class="camp-grid" style="grid-template-columns:repeat(${state.nights.length}, 44px)">
+        ${state.nights.map((n, i) => `<button class="ch${i === sel ? ' sel' : ''}" data-n="${i}" title="Night ${i+1} · ${fmtDate(n)}"><b>${i+1}</b><span>${fmtShort(n)}</span></button>`).join('')}
+        ${state.decks.map(d => state.nights.map((n, i) => cell(d, n, i)).join('')).join('')}
+      </div></div>
+    </div>
+    <p class="legend camp-legend"><span><b class="gold">★</b> won</span><span>● played</span><span>○ sat out</span><span>small number = cards swapped</span></p>`;
+  const sc = host.querySelector('.camp-scroll');
+  const selEl = host.querySelector('.ch.sel');
+  if (selEl) sc.scrollLeft = Math.max(0, selEl.offsetLeft - sc.clientWidth + 88);
+  host.querySelectorAll('[data-n]').forEach(b => b.onclick = () => { nightIdx = +b.dataset.n; renderCampaign(); renderNight(); });
+}
 function renderNight(){
-  const host = $('#night'), nav = $('#night-nav');
-  if (!state.nights.length){ host.innerHTML = `<div class="card empty">No game nights logged yet.</div>`; nav.innerHTML = ''; return; }
-  const i = nightIdx ?? state.nights.length - 1, date = state.nights[i];
-  nav.innerHTML = `<button class="icon-btn" data-step="-1" ${i === 0 ? 'disabled' : ''} aria-label="Previous night">‹</button>
-    <span class="night-label"><b>Night ${i+1}</b> · ${fmtDate(date)}</span>
-    <button class="icon-btn" data-step="1" ${i === state.nights.length-1 ? 'disabled' : ''} aria-label="Next night">›</button>`;
-  nav.querySelectorAll('[data-step]').forEach(b => b.onclick = () => { nightIdx = Math.max(0, Math.min(state.nights.length-1, i + +b.dataset.step)); renderNight(); });
-
+  const host = $('#night');
+  if (!state.nights.length){ host.innerHTML = `<div class="card empty">No game nights logged yet.</div>`; return; }
+  const i = nightIdx ?? state.nights.length - 1, date = state.nights[i], last = state.nights.length - 1;
   const games = state.games.filter(g => g.date === date);
   const played = new Set(games.flatMap(g => g.decks));
   const satOut = state.decks.filter(d => !played.has(d.id));
@@ -290,22 +130,21 @@ function renderNight(){
       ${quote ? `<p class="quote">“${esc(quote)}”</p>` : ''}</div>`;
   }).join('') : `<p class="hint">No swaps this night.</p>`;
 
-  host.innerHTML = `<div class="night-grid">
-    <div class="card pad"><h3 class="card-h">At the table</h3>${table}
-      ${satOut.length && games.length ? `<p class="sat-out">Sat out: ${satOut.map(d => `${dot(d.color)}${esc(d.name)}`).join(' ')}</p>` : ''}</div>
-    <div class="card pad"><h3 class="card-h">What changed</h3><div class="night-decks">${changes}</div></div>
-  </div>`;
-  host.querySelectorAll('[data-swap]').forEach(b => b.onclick = () => showSwap(state.changes[+b.dataset.swap]));
-  host.querySelectorAll('[data-card]').forEach(b => b.onclick = () => showCard(b.dataset.card));
-}
-/* commander a deck had going into a given night (after that night's commander swaps) */
-function cmdAt(d, date){
-  let c = d.commander0;
-  for (const s of d.swaps) if (s.date <= date && s.isCmd) c = s.in;
-  return c;
+  host.innerHTML = `<div class="night-bar">
+      <button class="icon-btn" data-step="-1" ${i === 0 ? 'disabled' : ''} aria-label="Previous night">‹</button>
+      <h3 class="night-title">Night ${i+1}<span>${fmtDate(date)}${i === last ? ' · latest' : ''}</span></h3>
+      <button class="icon-btn" data-step="1" ${i === last ? 'disabled' : ''} aria-label="Next night">›</button>
+    </div>
+    <div class="night-grid">
+      <div class="card pad"><h3 class="card-h">At the table</h3>${table}
+        ${satOut.length && games.length ? `<p class="sat-out">Sat out: ${satOut.map(d => `${dot(d.color)}${esc(d.name)}`).join(' ')}</p>` : ''}</div>
+      <div class="card pad"><h3 class="card-h">New cards <span class="soft">· tap one to see what it replaced</span></h3><div class="night-decks">${changes}</div></div>
+    </div>`;
+  host.querySelectorAll('[data-step]').forEach(b => b.onclick = () => { nightIdx = Math.max(0, Math.min(last, i + +b.dataset.step)); renderCampaign(); renderNight(); });
+  bindCards(host);
 }
 
-/* ---------- chapter 2: ranking + race chart, one Decks/Players toggle ---------- */
+/* ---------- standings: ranking + race chart, one Decks/Players toggle ---------- */
 function bars(rows){
   return `<ol class="ranking">` + rows.map(r => {
     const rate = r.played ? r.wins / r.played : 0, exp = r.played ? r.expected / r.played : 0;
@@ -326,7 +165,7 @@ function ranked(rows){
 }
 const subLine = (x, kind) => [
   x.most && `${kind === 'deck' ? 'Played most by' : 'Plays most'} ${esc(joinNames(x.most.names))}`,
-  x.best && `${kind === 'deck' ? 'wins with' : 'wins with'} ${esc(joinNames(x.best.names))}`,
+  x.best && `wins with ${esc(joinNames(x.best.names))}`,
 ].filter(Boolean).join(' · ');
 
 function renderStandings(){
@@ -338,8 +177,8 @@ function renderStandings(){
 
   const cx = crossStats();
   const rows = ui.who === 'players'
-    ? ranked(state.players.map(p => ({key:p, label:p, color:pColor(p), ...playerStats(p), sub:subLine(cx.forPlayer(p), 'player')})))
-    : ranked(state.decks.map(d => ({key:d.id, label:d.name, color:d.color, ...deckStats(d), sub:subLine(cx.forDeck(d.id), 'deck')})));
+    ? ranked(state.players.map(p => ({label:p, color:pColor(p), ...playerStats(p), sub:subLine(cx.forPlayer(p), 'player')})))
+    : ranked(state.decks.map(d => ({label:d.name, color:d.color, ...deckStats(d), sub:subLine(cx.forDeck(d.id), 'deck')})));
 
   host.innerHTML = `<div class="st-grid">
       <div><h3 class="card-h">Ranking</h3>${bars(rows)}
@@ -391,13 +230,15 @@ function drawChart(){
     const W = Math.max(260, host.clientWidth), H = 220, pl = 34, pr = 16, pt = 12, pb = 26, n = cols.length;
     const x = i => pl + (n === 1 ? 0 : i * (W - pl - pr) / (n - 1)), y = v => pt + (H - pt - pb) * (max - v) / (max - min || 1);
     const ticks = power ? [...new Set([min, 0, max].map(t => Math.round(t*4)/4))] : [...new Set([0, Math.ceil(max/2), max])];
+    const every = Math.ceil(n / Math.max(4, Math.floor((W - pl - pr) / 44)));     // thin out x labels when crowded
     let s = `<svg width="${W}" height="${H}" role="img" aria-label="${power ? 'Power' : 'Cumulative wins'} per ${ui.who === 'players' ? 'player' : 'deck'} by night">`;
     s += ticks.map(t => `<line x1="${pl}" x2="${W-pr}" y1="${y(t)}" y2="${y(t)}" class="${t === 0 ? 'axis0' : 'grid'}"/><text x="${pl-6}" y="${y(t)+3}" text-anchor="end" class="tick">${fmt(t)}</text>`).join('');
-    s += cols.map((c,i) => `<text x="${x(i)}" y="${H-6}" text-anchor="middle" class="tick">${i ? 'N' + nightNo(c) : 'Start'}</text>`).join('');
+    const show = i => i === n-1 || (i % every === 0 && n-1-i >= every/2);
+    s += cols.map((c,i) => show(i) ? `<text x="${x(i)}" y="${H-6}" text-anchor="middle" class="tick">${i ? 'N' + nightNo(c) : 'Start'}</text>` : '').join('');
     series.forEach((sr, k) => {
       const off = (k - (series.length-1)/2) * 1.6;   // nudge so tied lines stay visible
       s += `<polyline points="${sr.v.map((v,i) => `${x(i)},${y(v)+off}`).join(' ')}" fill="none" stroke="${sr.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
-      s += sr.v.map((v,i) => `<circle cx="${x(i)}" cy="${y(v)+off}" r="4" fill="${sr.color}" stroke="var(--surface)" stroke-width="2"/>`).join('');
+      if (n <= 16) s += sr.v.map((v,i) => `<circle cx="${x(i)}" cy="${y(v)+off}" r="3.5" fill="${sr.color}" stroke="var(--surface)" stroke-width="2"/>`).join('');
     });
     const hw = n > 1 ? (W - pl - pr) / (n - 1) : W;
     s += cols.map((c,i) => `<rect class="hit" data-i="${i}" x="${x(i) - hw/2}" y="0" width="${hw}" height="${H}" fill="transparent"/>`).join('');
@@ -422,89 +263,77 @@ function drawChart(){
   host._ro = new ResizeObserver(draw); host._ro.observe(host);
 }
 
-/* ---------- chapter 3: swaps only, one row per deck ---------- */
-function renderTimeline(){
-  const cols = ['start', ...state.nights];
-  const el = $('#timeline');
-  el.style.gridTemplateColumns = `${innerWidth < 600 ? 96 : 140}px repeat(${cols.length}, minmax(${innerWidth < 600 ? 150 : 170}px, 1fr))`;
-  let h = `<div class="tl-corner"></div>` + cols.map((c,i) => {
-    if (i === 0) return `<div class="tl-colhead"><b>Start</b><span>Out of the box</span></div>`;
-    return `<div class="tl-colhead"><b>Night ${i}</b><span>${fmtShort(c)}</span></div>`;
-  }).join('');
-  for (const d of state.decks){
-    h += `<div class="tl-label" style="--c:${d.color}">${dot(d.color)}<span>${esc(d.name)}</span></div>`;
-    h += cols.map((c,i) => {
-      if (i === 0) return `<div class="tl-cell"><button class="c tl-start" data-card="${esc(d.commander0)}" title="${esc(d.commander0)}">${pic(d.commander0,'small','thumb')}</button></div>`;
-      const won = state.games.some(g => g.date === c && g.winner === d.id);
-      const sw = d.swaps.filter(s => s.date === c);
-      return `<div class="tl-cell${won ? ' tl-won' : ''}">${won ? '<span class="tl-star" title="Won this night">★</span>' : ''}${sw.map(s =>
-        `<button class="swap${s.isCmd ? ' cmdswap' : ''}" data-swap="${state.changes.indexOf(s)}" title="${esc(s.out || '—')} → ${esc(s.in || '—')}">
-          ${s.out ? pic(s.out,'small','out') : ''}${s.in ? pic(s.in,'small','in') : ''}</button>`).join('')}</div>`;
-    }).join('');
-  }
-  el.innerHTML = h;
-  const sc = el.parentElement; if (!sc._scrolled){ sc.scrollLeft = sc.scrollWidth; sc._scrolled = true; }  // open on the latest night
-  el.querySelectorAll('[data-swap]').forEach(b => b.onclick = () => showSwap(state.changes[+b.dataset.swap]));
-  el.querySelectorAll('[data-card]').forEach(b => b.onclick = () => showCard(b.dataset.card));
-}
-
-/* ---------- chapter 4: deck cards are the tabs ---------- */
+/* ---------- the decks today: deck cards are the tabs ---------- */
 function renderStrip(){
   $('#deck-strip').innerHTML = state.decks.map(d => {
     const s = deckStats(d);
     return `<button class="deck-card" role="tab" aria-selected="${d.id === activeDeck}" data-deck="${d.id}" style="--c:${d.color}">
       <div class="art" style="${img(d.cur,'art') ? `background-image:url('${esc(img(d.cur,'art'))}')` : ''}">${pips(d.colors)}</div>
       <div class="body"><h3>${esc(d.name)}</h3><p class="cmd">${esc(d.cur)}</p>
-        <p class="meta">${plural(s.wins,'win')} · ${plural(s.swaps,'swap')}</p></div></button>`;
+        <p class="meta">${plural(s.wins,'win')} · ${d.changed} of ${d.size} cards new</p></div></button>`;
   }).join('');
   document.querySelectorAll('.deck-card').forEach(b => b.onclick = () => { activeDeck = b.dataset.deck; renderStrip(); renderDetail(); });
 }
 
 function renderDetail(){
   const d = deckById(activeDeck), s = deckStats(d), cx = crossStats().forDeck(d.id);
+  const latest = d.swaps.length ? d.swaps[d.swaps.length - 1].date : null;
+  const onlyNew = ui.cards === 'new' && d.changed > 0;
   const groups = {};
   for (const [name, e] of d.now){
+    if (onlyNew && !e.added) continue;
     const g = name === d.cur ? 'Commander' : typeOf(name);
     (groups[g] = groups[g] || []).push({name, ...e});
   }
-  const cardBtn = c => `<button class="c${c.added ? ' is-new' : ''}" data-card="${esc(c.name)}" title="${esc(c.name)}">
-      ${pic(c.name,'small')}${c.qty > 1 ? `<span class="qty">×${c.qty}</span>` : ''}${c.added ? `<span class="new">new</span>` : ''}</button>`;
+  const cardBtn = c => {
+    const fresh = c.added && c.added === latest;
+    return `<button class="c${fresh ? ' is-new' : c.added ? ' is-added' : ''}" data-card="${esc(c.name)}" title="${esc(c.name)}${c.added ? ` · added night ${nightNo(c.added)}` : ''}">
+      ${pic(c.name,'small')}${c.qty > 1 ? `<span class="qty">×${c.qty}</span>` : ''}${fresh ? `<span class="new">new</span>` : c.added ? `<span class="added">N${nightNo(c.added)}</span>` : ''}</button>`;
+  };
   let main = '';
   for (const g of TYPE_ORDER){
     if (!groups[g] || g === 'Commander') continue;
     const list = groups[g].sort((a,b) => (BASICS.has(a.name) - BASICS.has(b.name)) || (info(a.name).cmc||0) - (info(b.name).cmc||0) || a.name.localeCompare(b.name));
-    const label = {Sorcery:'Sorceries', Other: cardsReady ? 'Other' : 'Cards'}[g] || g + 's';
+    const label = {Sorcery:'Sorceries', Other: ready() ? 'Other' : 'Cards'}[g] || g + 's';
     main += `<div class="group"><h4>${label} <span>${list.reduce((t,c) => t + c.qty, 0)}</span></h4><div class="grid">${list.map(cardBtn).join('')}</div></div>`;
   }
   if (d.removed.length) main += `<details class="group gy"><summary><h4>Swapped out <span>${d.removed.length}</span></h4></summary><div class="grid">${d.removed.map(r => cardBtn({name:r.name, qty:1})).join('')}</div></details>`;
 
-  const log = d.swaps.length
-    ? `<ul class="log">${[...d.swaps].reverse().map(c => `<li><span class="d">Night ${nightNo(c.date)} · ${fmtShort(c.date)}${c.isCmd ? ' · <b class="gold">new commander</b>' : ''}</span>
-        ${c.out ? `<span class="o">${esc(c.out)}</span> → ` : ''}<b>${esc(c.in)}</b>${c.note ? `<span class="n">“${esc(c.note)}”</span>` : ''}</li>`).join('')}</ul>`
-    : `<p class="hint">No swaps yet. Straight out of the box.</p>`;
+  // history, one foldable block per night, newest first and open
+  const byNight = [...new Set(d.swaps.map(c => c.date))].reverse();
+  const log = byNight.length ? byNight.map((date, k) => {
+    const sw = d.swaps.filter(c => c.date === date), quote = sw.map(c => c.note).find(Boolean);
+    return `<details class="hnight" ${k === 0 ? 'open' : ''}><summary>Night ${nightNo(date)} <span>${fmtShort(date)} · ${plural(sw.length, 'swap')}</span></summary>
+      <ul class="log">${sw.map(c => `<li>${c.out ? `<span class="o">${esc(c.out)}</span> → ` : ''}<button class="link" data-swap="${state.changes.indexOf(c)}">${esc(c.in)}</button>${c.isCmd ? ' <b class="gold">commander</b>' : ''}</li>`).join('')}</ul>
+      ${quote ? `<p class="quote">“${esc(quote)}”</p>` : ''}</details>`;
+  }).join('') : `<p class="hint">No swaps yet. Straight out of the box.</p>`;
+
   $('#deck-detail').innerHTML = `<div class="detail card pad" style="--c:${d.color}">
     <aside class="side">
       <button class="c" data-card="${esc(d.cur)}">${pic(d.cur,'normal','cmdimg',false)}</button>
       <h3>${esc(d.name)} ${pips(d.colors)}</h3>
       <dl class="kv">
         <dt>Record</dt><dd>${s.wins} / ${plural(s.played,'game')}</dd>
+        <dt>Changed</dt><dd>${d.changed} of ${d.size} cards</dd>
         ${cx.most ? `<dt>Played most by</dt><dd>${esc(joinNames(cx.most.names))}</dd>` : ''}
         ${cx.best ? `<dt>Wins with</dt><dd>${esc(joinNames(cx.best.names))}</dd>` : ''}
       </dl>
       ${d.moxfield ? `<a class="mox" href="${esc(d.moxfield)}" target="_blank" rel="noopener">Open in Moxfield ↗</a>` : ''}
-      <details class="hist" open><summary>History <span>${d.swaps.length}</span></summary>${log}</details>
+      <h4 class="card-h hist-h">History</h4>${log}
     </aside>
-    <div>${main}</div></div>`;
-  $('#deck-detail').querySelectorAll('[data-card]').forEach(b => b.onclick = () => showCard(b.dataset.card));
+    <div><div class="list-head"><h4 class="card-h">The list</h4>${d.changed ? seg('cards', [['all', `All ${d.size}`], ['new', `New ${d.changed}`]], 'Which cards to show') : ''}</div>${main}</div></div>`;
+  bindSeg($('#deck-detail'), renderDetail);
+  bindCards($('#deck-detail'));
 }
 
 /* ---------- modal ---------- */
 function openModal(html){ $('#modal-body').innerHTML = html; $('#modal').hidden = false; }
 function closeModal(){ $('#modal').hidden = true; $('#modal-body').innerHTML = ''; }
-function showCard(n){
+function showCard(n, why){
   const i = info(n);
   openModal(`<div class="mcards"><figure><img src="${esc(img(n,'normal'))}" alt="${esc(n)}">
-    <figcaption>${i.uri ? `<a href="${esc(i.uri)}" target="_blank" rel="noopener">${esc(n)} on Scryfall</a>` : esc(n)}</figcaption></figure></div>`);
+    <figcaption>${i.uri ? `<a href="${esc(i.uri)}" target="_blank" rel="noopener">${esc(n)} on Scryfall</a>` : esc(n)}</figcaption></figure></div>
+    ${why ? `<p class="mnote">“${esc(why)}”</p>` : ''}`);
 }
 function showSwap(c){
   const d = deckById(c.deck);
@@ -518,14 +347,15 @@ addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 /* ---------- boot ---------- */
 function renderAll(){
-  renderHero(); renderNight(); renderStandings(); renderTimeline(); renderStrip(); renderDetail();
+  renderHero(); renderUpNext(); renderCampaign(); renderNight(); renderStandings(); renderStrip(); renderDetail();
   const w = $('#warnings');
   if (state.warnings.length){ w.hidden = false; w.innerHTML = '<b>Data check:</b><br>' + [...new Set(state.warnings)].map(esc).join('<br>'); }
 }
 load().then(() => {
+  if (state.site.title){ $('#site-title').textContent = $('#nav-brand').textContent = document.title = state.site.title; }
   activeDeck = state.decks[0].id;
-  renderAll();                         // fast first paint
-  return loadCards().finally(() => { cardsReady = true; renderAll(); });  // then real images + card types
+  renderAll();                                   // fast first paint
+  return loadCards().finally(renderAll);         // then real images + card types
 }).catch(e => {
   document.querySelector('main').innerHTML = `<p class="warn">Could not load data: ${esc(e.message)}</p>`;
 });

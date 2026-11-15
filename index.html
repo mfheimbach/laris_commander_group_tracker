@@ -4,20 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Commander Legacy</title>
-<meta name="description" content="Our five 2022 Starter Commander decks, upgraded one card at a time.">
+<meta name="description" content="Our five 2022 Starter Commander decks, upgraded a few cards at a time.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=202611142342">
+<link rel="stylesheet" href="style.css?v=202611152241">
 </head>
 <body>
 <nav class="topnav" aria-label="Sections">
   <div class="wrap nav-inner">
     <a class="brand" href="#top" id="nav-brand">Commander Legacy</a>
     <div class="nav-links">
-      <a href="#latest">Latest night</a>
+      <a href="#upnext" id="nav-upnext" hidden>Up next</a>
+      <a href="#nights">Game nights</a>
       <a href="#standings">Standings</a>
-      <a href="#evolution">Evolution</a>
       <a href="#decks">Decks</a>
     </div>
   </div>
@@ -33,40 +33,39 @@
 </header>
 
 <main class="wrap">
-  <!-- 1. what just happened -->
-  <section id="latest" aria-labelledby="latest-h">
+  <!-- what's coming: only shown while a menu for the next night exists -->
+  <section id="upnext" aria-labelledby="up-h" hidden>
     <div class="section-head">
-      <div><p class="kicker">Chapter 1</p><h2 id="latest-h">The latest night</h2></div>
-      <div class="night-nav" id="night-nav"></div>
+      <h2 id="up-h">Up next</h2>
+      <p class="hint">The options for the next night. Have a look, form an opinion, argue in the chat.</p>
     </div>
+    <div id="upnext-body"></div>
+  </section>
+
+  <!-- what happened -->
+  <section id="nights" aria-labelledby="nights-h">
+    <div class="section-head">
+      <h2 id="nights-h">Game nights</h2>
+      <p class="hint">Pick a night to see who played and what changed.</p>
+    </div>
+    <div class="card pad" id="campaign"></div>
     <div id="night"></div>
   </section>
 
-  <!-- 2. who's winning -->
+  <!-- who's winning -->
   <section id="standings" aria-labelledby="st-h">
     <div class="section-head">
-      <div><p class="kicker">Chapter 2</p><h2 id="st-h">Standings</h2></div>
+      <h2 id="st-h">Standings</h2>
       <div id="who-toggle"></div>
     </div>
     <div class="standings card" id="standings-body"></div>
   </section>
 
-  <!-- 3. how the decks changed -->
-  <section id="evolution" aria-labelledby="ev-h">
-    <div class="section-head">
-      <div><p class="kicker">Chapter 3</p><h2 id="ev-h">How the decks evolved</h2></div>
-      <p class="hint">Every swap, night by night. Faded card out, bright card in. Tap to compare.</p>
-    </div>
-    <div class="timeline-scroll card">
-      <div class="timeline" id="timeline"></div>
-    </div>
-  </section>
-
-  <!-- 4. explore -->
+  <!-- explore -->
   <section id="decks" aria-labelledby="deck-h">
     <div class="section-head">
-      <div><p class="kicker">Chapter 4</p><h2 id="deck-h">The decks today</h2></div>
-      <p class="hint">Pick a deck to see its current list.</p>
+      <h2 id="deck-h">The decks today</h2>
+      <p class="hint">Pick a deck to see its list and history.</p>
     </div>
     <div class="deck-strip" id="deck-strip" role="tablist"></div>
     <div id="deck-detail"></div>
@@ -76,7 +75,7 @@
 </main>
 
 <footer class="wrap foot">
-  Card images © Wizards of the Coast, served by <a href="https://scryfall.com">Scryfall</a>. Unofficial fan page.
+  Card images © Wizards of the Coast, served by <a href="https://scryfall.com">Scryfall</a>. Unofficial fan page. · <a href="admin.html">Admin</a>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -87,6 +86,7 @@
 </div>
 <div class="tip" id="tip" hidden></div>
 
-<script src="app.js?v=202611142342"></script>
+<script src="core.js?v=202611152241"></script>
+<script src="app.js?v=202611152241"></script>
 </body>
 </html>
