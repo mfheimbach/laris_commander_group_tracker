@@ -1,1 +1,113 @@
 deck;kind;card;reason
+flight;brief;;Draw on hit, cheap flyers and pillowfort. Anthem birds that die two turns later go
+flight;picks;3;
+flight;cut;Sharding Sphinx;6 mana, needs artifact creatures we don't have
+flight;cut;Inspired Sphinx;Overpriced for three cards
+flight;cut;Diluvian Primordial;7 mana, depends on opponents' graveyards
+flight;cut;Angler Turtle;7 mana, no flying, forces attacks we don't want
+flight;cut;Staggering Insight;Aura on one creature, dies with it
+flight;cut;Steel-Plume Marshal;5-mana 3/3, bonus only while it survives
+flight;cut;Kangee, Sky Warden;5-mana 3/3, bonus only while it survives
+flight;cut;Crush Contraband;4-mana sorcery, Disenchant and Gift already cover it
+flight;cut;Pilgrim's Eye;3 mana for a 1/1 and a land to hand
+flight;cut;Tranquil Cove;Always enters tapped
+flight;add;Coastal Piracy;Every flyer that connects draws a card
+flight;add;Fblthp, Impossibly Lost;2-mana Coastal Piracy: draw two when we hit
+flight;add;Defiler of Dreams;Draws off every blue permanent, makes them cheaper
+flight;add;Wan Shi Tong, Librarian;Flash flyer that uses held-up counter mana; grows when opponents search
+flight;add;Malcolm, Alluring Scoundrel;2-mana flash flyer, loots on hit
+flight;add;Gold-Forged Thopteryx;2-mana flyer, gives Ojutai ward 2
+flight;add;Mirror Entity;Turns any board of birds into a real threat
+flight;add;Windborn Muse;Ghostly Prison on a flying body
+flight;add;Glen Elendra Archmage;Counters wipes, comes back once
+flight;add;Hallowed Fountain;Untapped dual
+chaos;brief;;More bodies, more life loss, better lands
+chaos;picks;3;
+chaos;cut;Bloodfell Caves;Always enters tapped
+chaos;cut;Urborg Volcano;Always enters tapped
+chaos;cut;Explosion of Riches;Draws opponents a card too
+chaos;cut;Wild Ricochet;Too situational
+chaos;cut;Magmatic Force;7 mana for a pinger
+chaos;cut;Kaervek the Merciless;7 mana
+chaos;cut;Hate Mirage;Temporary
+chaos;cut;Sunbird's Invocation;6 mana, does nothing on its own
+chaos;cut;Scythe Specter;7 mana
+chaos;cut;Dredge the Mire;Depends on opponents' graveyards
+chaos;add;Rakdos, Lord of Riots;Cheap big demon once anyone lost life
+chaos;add;Vito, Thorn of the Dusk Rose;Turns lifegain into drain
+chaos;add;Dauthi Voidwalker;Cheap evasive body, exiles opponents' graveyards
+chaos;add;Fireglass Mentor;Card advantage on a 2-drop
+chaos;add;Laelia, the Blade Reforged;Grows and draws on attack
+chaos;add;Professional Face-Breaker;Treasure and card advantage on hit
+chaos;add;Hunted Horror;7/7 for 2; hand the Centaurs to whoever is furthest behind
+chaos;add;Promise of Power;Five cards or a big flying demon
+chaos;add;Blood Crypt;Untapped dual
+chaos;add;Badlands;Untapped dual
+grave;brief;;Draw and a way back from a full graveyard; rocks for the curve
+grave;picks;3;
+grave;cut;Jwar Isle Refuge;Always enters tapped
+grave;cut;Laboratory Drudge;Needs a full graveyard first
+grave;cut;Withered Wretch;Slow graveyard hate
+grave;cut;Necromantic Selection;7 mana
+grave;cut;Overseer of the Damned;6 mana, small effect
+grave;cut;Eternal Skylord;Small effect
+grave;cut;Vela the Night-Clad;Fix the curve first
+grave;cut;Gleaming Overseer;Small effect
+grave;cut;Vizier of the Scorpion;Small effect
+grave;cut;Lazotep Plating;Narrow protection
+grave;cut;Scourge of Nel Toth;Never worth it
+grave;cut;Gravespawn Sovereign;6 mana, needs a big board
+grave;add;Oversold Cemetery;Creatures back from the graveyard every turn
+grave;add;Phyrexian Reclamation;Creatures back from the graveyard on demand
+grave;add;Lord of the Undead;Lord and zombie recursion
+grave;add;Graveborn Muse;Draws a card per zombie each turn
+grave;add;Kindred Discovery;Draws on every zombie that enters or attacks
+grave;add;Cryptbreaker;1-drop that makes zombies and draws
+grave;add;Grim Monolith;Fast mana
+grave;add;Mind Stone;2-mana rock that draws later
+grave;add;Fellwar Stone;2-mana rock in our colours
+grave;add;Underground Sea;Untapped dual
+tokens;brief;;Token makers that need no attack and no mana; survive wipes
+tokens;picks;3;
+tokens;cut;Graypelt Refuge;Always enters tapped
+tokens;cut;Commander's Sphere;Slow rock
+tokens;cut;Karametra's Favor;Aura ramp, dies with the creature
+tokens;cut;Harvest Season;Narrow
+tokens;cut;Curse of Bounty;Needs attacks
+tokens;cut;Slate of Ancestry;Clunky draw
+tokens;cut;Overwhelming Instinct;Needs attacks
+tokens;cut;Citywide Bust;Narrow wipe
+tokens;cut;Great Oak Guardian;Combat trick on a 6-drop
+tokens;cut;Valor in Akros;Temporary anthem
+tokens;add;Captain Jean-Luc Picard;Free tokens without attacking
+tokens;add;Oketra's Monument;Free token per creature spell
+tokens;add;Court of Grace;Free flyer every turn
+tokens;add;Awakening Zone;Free token every turn, ramps too
+tokens;add;Tendershoot Dryad;Free token every turn
+tokens;add;Adeline, Resplendent Cathar;Tokens every combat
+tokens;add;Grand Crescendo;Protects the board from a wipe
+tokens;add;Flawless Maneuver;Free protection from a wipe
+tokens;add;Cryptolith Rite;Every token taps for mana
+tokens;add;Gaea's Cradle;Huge mana with a token board
+dragons;brief;;More and better dragons; non-dragons and 7-drops go
+dragons;picks;3;
+dragons;cut;Timber Gorge;Always enters tapped
+dragons;cut;Shivan Oasis;Enters tapped late
+dragons;cut;Frontier Siege;Slow ramp
+dragons;cut;Commander's Sphere;Slow rock
+dragons;cut;Sweltering Suns;Weak wipe
+dragons;cut;Chain Reaction;Weak wipe
+dragons;cut;Dream Pillager;7 mana
+dragons;cut;Tyrant's Familiar;7 mana
+dragons;cut;Dragonkin Berserker;Weak dragon
+dragons;cut;Dragon Mage;7 mana
+dragons;add;Terror of the Peaks;Every dragon hits for its power
+dragons;add;Thundermane Dragon;Dragon value
+dragons;add;Glorybringer;Removal every other turn
+dragons;add;Hellkite Charger;Extra combats
+dragons;add;Smaug the Magnificent;Dragon value
+dragons;add;Dragonstorm Globe;Ramp for dragons
+dragons;add;Three Visits;2-mana ramp
+dragons;add;Lightning Greaves;Haste and protection
+dragons;add;Stomping Ground;Untapped dual
+dragons;add;Spire Garden;Untapped dual
