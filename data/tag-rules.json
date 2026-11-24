@@ -1,0 +1,103 @@
+{
+  "_about": "Scryfall queries used to tag cards automatically (admin page and tools/autotag.py). Order = display order. Manual edits in data/tags.csv always win.",
+  "roles": [
+    {
+      "tag": "Ramp",
+      "label": "Ramp",
+      "q": "otag:ramp",
+      "typical": [
+        10,
+        14
+      ],
+      "explain": "Extra mana, so you cast big things earlier"
+    },
+    {
+      "tag": "Draw",
+      "label": "Card draw",
+      "q": "otag:draw",
+      "typical": [
+        10,
+        15
+      ],
+      "explain": "Keeps your hand full"
+    },
+    {
+      "tag": "Removal",
+      "label": "Removal",
+      "q": "otag:removal -otag:board-wipe",
+      "typical": [
+        8,
+        12
+      ],
+      "explain": "Deals with one threat"
+    },
+    {
+      "tag": "Wipe",
+      "label": "Board wipes",
+      "q": "otag:board-wipe",
+      "typical": [
+        1,
+        3
+      ],
+      "explain": "Resets the whole board"
+    },
+    {
+      "tag": "Counter",
+      "label": "Counterspells",
+      "q": "otag:counterspell",
+      "typical": null,
+      "explain": "Stops a spell as it is cast"
+    },
+    {
+      "tag": "Tutor",
+      "label": "Tutors",
+      "q": "otag:tutor -otag:ramp",
+      "typical": null,
+      "explain": "Finds a specific card"
+    },
+    {
+      "tag": "Protection",
+      "label": "Protection",
+      "q": "otag:protection",
+      "typical": null,
+      "explain": "Keeps your stuff alive"
+    },
+    {
+      "tag": "Recursion",
+      "label": "Recursion",
+      "q": "otag:recursion",
+      "typical": null,
+      "explain": "Gets cards back from the graveyard"
+    }
+  ],
+  "themes": {
+    "Dragon": {
+      "label": "Dragons",
+      "q": "t:dragon or o:dragon"
+    },
+    "Zombie": {
+      "label": "Zombies",
+      "q": "t:zombie or o:zombie"
+    },
+    "Flying": {
+      "label": "Flying",
+      "q": "(t:creature kw:flying) or o:\"with flying\" or o:\"gain flying\" or o:\"have flying\""
+    },
+    "Tokens": {
+      "label": "Token makers",
+      "q": "o:/create[^.]*creature token/"
+    },
+    "Damage": {
+      "label": "Damage & life loss",
+      "q": "otag:burn or o:\"each opponent loses\" or o:/opponents? loses? (\\d+|x|that much) life/"
+    }
+  },
+  "themeTypical": [
+    8,
+    null
+  ],
+  "lands": [
+    35,
+    38
+  ]
+}

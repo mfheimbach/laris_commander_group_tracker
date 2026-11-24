@@ -5,7 +5,8 @@
     "colors": "WU",
     "commander": "Isperia, Supreme Judge",
     "pilot": "",
-    "moxfield": "https://moxfield.com/decks/4Q9cz_jghUWpugMUvVvnPg"
+    "moxfield": "https://moxfield.com/decks/4Q9cz_jghUWpugMUvVvnPg",
+    "theme": "Flying"
   },
   {
     "id": "chaos",
@@ -13,7 +14,8 @@
     "colors": "BR",
     "commander": "Kardur, Doomscourge",
     "pilot": "",
-    "moxfield": "https://moxfield.com/decks/SS1FP1cEiUKbPgDXgpxqlw"
+    "moxfield": "https://moxfield.com/decks/SS1FP1cEiUKbPgDXgpxqlw",
+    "theme": "Damage"
   },
   {
     "id": "grave",
@@ -21,7 +23,8 @@
     "colors": "UB",
     "commander": "Gisa and Geralf",
     "pilot": "",
-    "moxfield": "https://moxfield.com/decks/jUsNywcDTEOObBYyu_VJcA"
+    "moxfield": "https://moxfield.com/decks/jUsNywcDTEOObBYyu_VJcA",
+    "theme": "Zombie"
   },
   {
     "id": "tokens",
@@ -29,7 +32,8 @@
     "colors": "GW",
     "commander": "Emmara, Soul of the Accord",
     "pilot": "",
-    "moxfield": "https://moxfield.com/decks/_j-4DSYte0iocP5Z65tTGQ"
+    "moxfield": "https://moxfield.com/decks/_j-4DSYte0iocP5Z65tTGQ",
+    "theme": "Tokens"
   },
   {
     "id": "dragons",
@@ -37,6 +41,7 @@
     "colors": "RG",
     "commander": "Atarka, World Render",
     "pilot": "",
-    "moxfield": "https://moxfield.com/decks/UAgfGCZKqUqccw0fE_HRbA"
+    "moxfield": "https://moxfield.com/decks/UAgfGCZKqUqccw0fE_HRbA",
+    "theme": "Dragon"
   }
 ]

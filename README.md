@@ -17,7 +17,14 @@ Open `admin.html` (linked in the page footer). It works on a phone.
 
 - **Save a night:** date, who sat at which deck, the winner, the swaps per deck and a quote. Menu options appear as chips to tap; any other card can be typed. Cards are checked against Scryfall (colours, Commander legality, Game Changer). One press commits everything. What you typed survives a reload until it is saved.
 - **Next menu:** per deck, the cards that could go and the cards that could come in, plus a one-line brief. Shown on the site as "Up next". Saving a night clears it.
-- **Lists:** each deck's current list in Moxfield's import format, and links to edit the data files by hand.
+- **Decks & tags:** each card's tags per deck (tap to fix), each deck's current list in Moxfield's import format, and links to edit the data files by hand.
+
+## Tags and deck health
+Every card carries role tags (Ramp, Draw, Removal, Wipe, Counter, Tutor, Protection, Recursion) and theme tags (Dragon, Zombie, Flying, Tokens, Damage), stored in `data/tags.csv`. The site uses them for the "By role" view of a list and for the deck health panel (mana curve, role counts against typical ranges, colour balance).
+
+Tags come from Scryfall's community oracle tags via the queries in `data/tag-rules.json` (also where the typical ranges live). Saving a night tags new cards automatically; manual edits in the admin page always win. To re-tag everything from scratch: `python3 tools/autotag.py --all`.
+
+Link straight to a deck with `#dragons`, `#flyers`, `#zombies`, `#tokens` or `#demons` at the end of the site address.
 
 ## The data files
 Fields are separated by `;`, dates are `YYYY-MM-DD`. Decks are referred to by id (`flight`, `chaos`, `grave`, `tokens`, `dragons`) or by name (`Flyers`, `Demons`, `Zombies`, `Tokens`, `Dragons`).
@@ -44,7 +51,7 @@ dragons;add;Lathliss, Dragon Queen;every dragon brings a friend
 
 Typos (unknown decks, a card that isn't in the deck, a card Scryfall doesn't know) show up in a red box at the bottom of the public page.
 
-**Other files:** `data/decks.json` holds deck names, colours, starting commander and the Moxfield link. `data/decks/*.txt` are the original lists (don't edit these, log swaps instead). `data/site.json` sets the title and the repository the admin page writes to.
+**Other files:** `data/decks.json` holds deck names, colours, theme tag, starting commander and the Moxfield link. `data/decks/*.txt` are the original lists (don't edit these, log swaps instead). `data/site.json` sets the title and the repository the admin page writes to.
 
 Reading the data in R: `data.table::fread("data/games.csv", sep = ";")`.
 

@@ -10,8 +10,8 @@ const FALLBACK = ['#3987e5','#d6463f','#9085e9','#199e70','#c98500'];
 const PLAYER_COLORS = ['#3987e5','#d95926','#199e70','#c98500','#d55181','#008300','#9085e9','#e66767'];
 const TYPE_ORDER = ['Commander','Creature','Planeswalker','Instant','Sorcery','Artifact','Enchantment','Battle','Land','Other'];
 const BASICS = new Set(['Plains','Island','Swamp','Mountain','Forest','Wastes']);
-const FILES = {games:'data/games.csv', changes:'data/changes.csv', next:'data/next.csv'};
-const HEAD = {games:'date;decks;winner;note', changes:'date;deck;out;in;note', next:'deck;kind;card;reason'};
+const FILES = {games:'data/games.csv', changes:'data/changes.csv', next:'data/next.csv', tags:'data/tags.csv'};
+const HEAD = {games:'date;decks;winner;note', changes:'date;deck;out;in;note', next:'deck;kind;card;reason', tags:'card;tags'};
 
 const fmtDate = d => new Date(d + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'});
 const fmtShort = d => new Date(d + 'T12:00:00').toLocaleDateString('en-GB', {day:'numeric', month:'short'});
@@ -21,7 +21,7 @@ const dot = c => `<i class="dot" style="--c:${c}"></i>`;
 /* a value that is safe inside one ;-separated field */
 const field = s => String(s ?? '').replace(/\s*[;\r\n]+\s*/g, ', ').replace(/^, |, $/g, '').trim();
 
-const state = {site:{}, decks:[], games:[], changes:[], nights:[], players:[], menu:{}, warnings:[]};
+const state = {site:{}, decks:[], games:[], changes:[], nights:[], players:[], menu:{}, tags:new Map(), rules:{roles:[], themes:{}}, warnings:[]};
 let cards = {};           // lower-case name -> slim Scryfall info
 let cardsReady = false;
 
@@ -58,14 +58,19 @@ const pColor = p => PLAYER_COLORS[state.players.indexOf(p)] || '#7c7a73';
 /* read(path) returns the file's text. The admin page passes a reader that asks GitHub directly. */
 async function load(read = fetchText){
   state.warnings = [];
-  const [site, decks, games, changes, next] = await Promise.all([
+  const [site, decks, games, changes, next, tags, rules] = await Promise.all([
     read('data/site.json').then(JSON.parse).catch(() => ({})),
     read('data/decks.json').then(JSON.parse),
     read(FILES.games).then(parseCSV),
     read(FILES.changes).then(parseCSV),
     read(FILES.next).then(parseCSV).catch(() => []),
+    read(FILES.tags).then(parseCSV).catch(() => []),
+    read('data/tag-rules.json').then(JSON.parse).catch(() => ({roles:[], themes:{}})),
   ]);
   state.site = site;
+  state.rules = rules;
+  state.tags = new Map(tags.filter(r => r.card).map(r => [r.card.toLowerCase(), (r.tags || '').split(',').map(t => t.trim()).filter(Boolean)]));
+  state.tagNames = new Map(tags.filter(r => r.card).map(r => [r.card.toLowerCase(), r.card]));
   const lists = await Promise.all(decks.map(d => read(`data/decks/${d.id}.txt`)));
   decks.forEach((d,i) => {
     d.list = parseList(lists[i]);
@@ -162,7 +167,7 @@ function exportList(d){
 }
 
 /* ---------- Scryfall ---------- */
-const CACHE_KEY = 'sfcache-v2', WEEK = 7*864e5;
+const CACHE_KEY = 'sfcache-v3', WEEK = 7*864e5;
 function readCache(){ try { return JSON.parse(localStorage.getItem(CACHE_KEY)) || {}; } catch { return {}; } }
 function writeCache(c){ try { localStorage.setItem(CACHE_KEY, JSON.stringify(c)); } catch {} }
 const fuzzyImg = (name, v='normal') => `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(name)}&format=image&version=${v}`;
@@ -172,6 +177,7 @@ function slim(card){
   const iu = f.image_uris || {};
   return {name:card.name, type:card.type_line || f.type_line || '', cmc:card.cmc ?? 0,
           ci:(card.color_identity || []).join(''), legal:(card.legalities || {}).commander || '', gc:!!card.game_changer,
+          cost:card.mana_cost ?? f.mana_cost ?? '', produced:(card.produced_mana || []).join(''),
           small:iu.small, normal:iu.normal, art:iu.art_crop, uri:card.scryfall_uri, t:Date.now()};
 }
 async function loadCards(extra = []){
@@ -248,6 +254,80 @@ function typeOf(n){
   return 'Other';
 }
 
+/* ---------- tags + deck health ---------- */
+const tagsOf = n => state.tags.get(String(n).toLowerCase()) || [];
+const hasTags = n => state.tags.has(String(n).toLowerCase());
+const isLand = n => BASICS.has(n) || typeOf(n) === 'Land';
+const themeOf = d => d.theme && state.rules.themes[d.theme] ? {tag:d.theme, ...state.rules.themes[d.theme]} : null;
+/* groups for the "by role" view: the deck's theme first, then the functional roles */
+function roleDefs(d){
+  const t = themeOf(d);
+  return [...(t ? [{tag:t.tag, label:t.label, typical:state.rules.themeTypical || [8, null], theme:true,
+      explain:'8 or more and it becomes a pattern you can count on'}] : []), ...state.rules.roles];
+}
+/* count of each mana symbol colour in a cost; hybrid counts for both halves */
+function pipCount(cost){
+  const p = {W:0, U:0, B:0, R:0, G:0};
+  for (const m of String(cost).matchAll(/\{([^}]+)\}/g)) for (const c of 'WUBRG') if (m[1].split('/').includes(c)) p[c]++;
+  return p;
+}
+function health(d){
+  const curve = Array(8).fill(0), curveCards = Array.from({length:8}, () => []);
+  const pips = {W:0, U:0, B:0, R:0, G:0}, sources = {W:0, U:0, B:0, R:0, G:0};
+  let lands = 0, nonland = 0, mvSum = 0;
+  for (const [name, e] of d.now){
+    if (isLand(name)){
+      lands += e.qty;
+      const prod = info(name).produced || ({Plains:'W', Island:'U', Swamp:'B', Mountain:'R', Forest:'G'})[name] || '';
+      for (const c of 'WUBRG') if (prod.includes(c)) sources[c] += e.qty;
+      continue;
+    }
+    if (name === d.cur) continue;
+    nonland += e.qty;
+    const mv = Math.round(info(name).cmc || 0), b = Math.min(7, mv);
+    curve[b] += e.qty; curveCards[b].push(name); mvSum += mv * e.qty;
+    const p = pipCount(info(name).cost || ''); for (const c of 'WUBRG') pips[c] += p[c] * e.qty;
+  }
+  const roles = roleDefs(d).map(r => {
+    const cards = [...d.now.keys()].filter(n => n !== d.cur && !isLand(n) && tagsOf(n).includes(r.tag));
+    return {...r, cards, count:cards.reduce((t, n) => t + d.now.get(n).qty, 0)};
+  });
+  return {size:d.size, lands, nonland, avgMv:nonland ? mvSum / nonland : 0, curve, curveCards, pips, sources, roles,
+    untagged:[...d.now.keys()].filter(n => !isLand(n) && !hasTags(n))};
+}
+/* ask Scryfall which rules each card matches; returns Map(name -> tags) for every name asked */
+async function autoTag(names){
+  const out = new Map(names.map(n => [n, []]));
+  const lower = new Map(names.map(n => [n.toLowerCase(), n]));
+  const queries = [...state.rules.roles.map(r => [r.tag, r.q]), ...Object.entries(state.rules.themes).map(([k, v]) => [k, v.q])];
+  for (let i = 0; i < names.length; i += 35){
+    const ors = names.slice(i, i + 35).map(n => `!"${n.replace(/"/g, '')}"`).join(' or ');
+    for (const [tag, q] of queries){
+      let url = 'https://api.scryfall.com/cards/search?q=' + encodeURIComponent(`(${q}) (${ors})`);
+      while (url){
+        const r = await fetch(url, {headers:{Accept:'application/json'}});
+        if (r.status === 404) break;                    // no matches
+        if (r.status === 429){ await new Promise(res => setTimeout(res, 2000)); continue; }
+        if (!r.ok) throw new Error('Scryfall ' + r.status);
+        const j = await r.json();
+        for (const c of j.data || []) for (const face of new Set([c.name, c.name.split(' // ')[0]])){
+          const n = lower.get(face.toLowerCase()); if (n && !out.get(n).includes(tag)) out.get(n).push(tag);
+        }
+        url = j.has_more ? j.next_page : null;
+        await new Promise(res => setTimeout(res, 120));
+      }
+    }
+  }
+  const order = queries.map(q => q[0]);
+  for (const [n, t] of out) t.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  return out;
+}
+function tagsCsv(map){
+  const names = [...map.keys()];
+  const display = n => { for (const d of state.decks) { const k = inDeck(d, n); if (k) return k; } return state.tagNames?.get(n) || n; };
+  return [HEAD.tags, ...names.map(k => [field(display(k)), map.get(k).join(',')].join(';')).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))].join('\n') + '\n';
+}
+
 /* ---------- derived numbers ---------- */
 function deckStats(d){
   const gs = state.games.filter(g => g.decks.includes(d.id));
@@ -281,6 +361,7 @@ function crossStats(){
 }
 
 return {$, esc, state, FILES, HEAD, TYPE_ORDER, BASICS, FLAG_TEXT,
+  tagsOf, hasTags, isLand, themeOf, roleDefs, health, autoTag, tagsCsv,
   fmtDate, fmtShort, joinNames, plural, dot, field, parseCSV, fetchText,
   load, loadCards, lookup, autocomplete, info, flags, img, pic, typeOf, ready:() => cardsReady,
   deckById, findDeck, inDeck, hasMenu, nightNo, pColor, cmdAt, exportList,

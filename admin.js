@@ -3,6 +3,7 @@
 (() => {
 'use strict';
 const {$, esc, state, FILES, HEAD, BASICS, FLAG_TEXT, fmtDate, plural, dot, field,
+       tagsOf, hasTags, isLand, roleDefs, autoTag, tagsCsv,
        load, loadCards, lookup, autocomplete, info, flags, deckById, inDeck, hasMenu, nightNo, exportList} = CL;
 
 const LS_TOKEN = 'cl-admin-token', LS_DRAFT = 'cl-admin-draft-v1', LS_MENU = 'cl-admin-menu-v1';
@@ -13,7 +14,8 @@ const ls = {
 let token = ls.get(LS_TOKEN) || '';
 let repo = '', branch = 'main';
 let conn = {ok:false, msg:''};
-let tab = 'night', menuDeck = null;
+let tab = 'night', menuDeck = null, tagDeck = null;
+let tagEdits = new Map();              // lower-case card name -> tags, edited but not saved yet
 let draft = null, menu = null;         // working copies: the night being entered, the next menu
 let busy = '', flash = null;           // flash: {ok, html}
 const overrides = {};                  // path -> text we just committed (shown before GitHub Pages catches up)
@@ -125,7 +127,7 @@ function renderConnect(){
 function renderTabs(){
   const menuCount = state.decks.filter(d => hasMenu(d.id)).length;
   $('#tabs').innerHTML = `<div class="seg" role="tablist">${[
-    ['night', 'Save a night'], ['menu', `Next menu${menuCount ? ` · ${menuCount}` : ''}`], ['export', 'Lists']
+    ['night', 'Save a night'], ['menu', `Next menu${menuCount ? ` · ${menuCount}` : ''}`], ['decks', 'Decks & tags']
   ].map(([v, l]) => `<button role="tab" data-act="tab" data-v="${v}" aria-pressed="${tab === v}">${l}</button>`).join('')}</div>`;
 }
 function renderLists(){
@@ -247,6 +249,18 @@ async function saveNight(){
     if (c1) files[FILES.changes] = c1;
     if (g1) files[FILES.games] = g1;
     if (draft.clearMenu && state.decks.some(d => hasMenu(d.id))) files[FILES.next] = HEAD.next + '\n';
+    // tag new cards automatically (plus any current card that never got tags), in the same commit
+    const untagged = [...new Set([...Object.values(draft.swaps).flatMap(x => x.ins), ...state.decks.flatMap(d => [...d.now.keys()])])]
+      .filter(n => !BASICS.has(n) && !hasTags(n));
+    if (untagged.length){
+      busy = `Tagging ${plural(untagged.length, 'new card')}…`; renderSaveBox();
+      try {
+        const found = await autoTag(untagged), map = new Map(state.tags);
+        for (const [name, t] of found){ map.set(name.toLowerCase(), t); state.tagNames.set(name.toLowerCase(), name); }
+        files[FILES.tags] = tagsCsv(map);
+      } catch(e){ console.warn('auto-tag skipped', e); }      // tagging can wait until next time
+      busy = 'Saving…'; renderSaveBox();
+    }
     const n = state.nights.includes(date) ? nightNo(date) : state.nights.filter(x => x < date).length + 1;
     const c = await commit(files, `Night ${n} (${date}): ${plural(changeRows.length, 'swap')}${headline}`);
     ls.set(LS_DRAFT, null);
@@ -325,24 +339,61 @@ async function menuAdd(d, kind, raw, reason = ''){
   return '';
 }
 
-/* ---------- tab: lists ---------- */
-function renderExportTab(){
+/* ---------- tab: decks & tags ---------- */
+const tagValue = n => tagEdits.has(n.toLowerCase()) ? tagEdits.get(n.toLowerCase()) : tagsOf(n);
+function renderDecksTab(){
+  const d = deckById(tagDeck) || state.decks[0];
+  const defs = roleDefs(d);
+  const names = [...d.now.keys()].filter(n => !isLand(n)).sort((a, b) => (a !== d.cur) - (b !== d.cur) || a.localeCompare(b));
+  const counts = defs.map(r => [r, names.filter(n => n !== d.cur && tagValue(n).includes(r.tag)).length]);
+  const rows = names.map(n => {
+    const t = tagValue(n), changed = tagEdits.has(n.toLowerCase());
+    return `<li class="trow${changed ? ' changed' : ''}"><span class="tname">${esc(n)}${n === d.cur ? ' <span class="soft">· commander</span>' : ''}${!hasTags(n) && !changed ? ' <span class="flag flag-unknown">untagged</span>' : ''}</span>
+      <span class="chips">${defs.map(r => `<button class="chip tchip${t.includes(r.tag) ? ' on' : ''}" data-act="tag" data-card="${esc(n)}" data-tag="${esc(r.tag)}" ${r.theme ? `style="--c:${d.color}"` : ''}>${esc(r.label)}</button>`).join('')}</span></li>`;
+  }).join('');
   $('#panel').innerHTML = `${flashHtml()}
-    <p class="hint">Current lists in Moxfield's import format. Copy one and paste it into the deck's bulk edit.</p>
-    ${state.decks.map(d => `<div class="card pad"><div class="sw-head">${dot(d.color)}<b>${esc(d.name)}</b>
+    <div class="chips deckpick">${state.decks.map(x => `<button class="chip${x.id === d.id ? ' on' : ''}" data-act="tag-deck" data-deck="${x.id}" style="--c:${x.color}">${dot(x.color)}${esc(x.name)}</button>`).join('')}</div>
+    <div class="card pad"><div class="sw-head"><h3 class="card-h">Tags · ${esc(d.name)}</h3><span class="count">${names.length} spells</span></div>
+      <p class="hint">Tags drive the "By role" view and the health panel on the site. New cards are tagged automatically from Scryfall when you save a night; fix anything that looks wrong here. Lands need no tags.</p>
+      <p class="tcounts">${counts.map(([r, n]) => `<span>${esc(r.label)} <b>${n}</b></span>`).join('')}</p>
+      <ul class="tlist">${rows}</ul></div>
+    <div class="card pad savebox sticky" id="savebox"></div>
+    <div class="card pad"><div class="sw-head"><h3 class="card-h">List for Moxfield</h3>
       <span class="count">${d.size} cards · ${d.changed} changed</span>
       <button class="btn ghost" data-act="copy" data-deck="${d.id}">Copy list</button></div>
       <textarea readonly rows="4" id="list-${d.id}">${esc(exportList(d))}</textarea>
-      ${d.moxfield ? `<a class="hint" href="${esc(d.moxfield)}" target="_blank" rel="noopener">Open in Moxfield ↗</a>` : ''}</div>`).join('')}
+      ${d.moxfield ? `<a class="hint" href="${esc(d.moxfield)}" target="_blank" rel="noopener">Open in Moxfield ↗</a>` : ''}</div>
     <div class="card pad"><h3 class="card-h">Fix a mistake</h3>
       <p class="hint">Saved rows can be edited or deleted directly in the data files:</p>
-      <p>${['changes', 'games', 'next'].map(k => `<a href="https://github.com/${esc(repo)}/edit/${esc(branch)}/${FILES[k]}" target="_blank" rel="noopener">${FILES[k].split('/')[1]} ↗</a>`).join(' · ')}</p></div>`;
+      <p>${['changes', 'games', 'next', 'tags'].map(k => `<a href="https://github.com/${esc(repo)}/edit/${esc(branch)}/${FILES[k]}" target="_blank" rel="noopener">${FILES[k].split('/')[1]} ↗</a>`).join(' · ')}</p></div>`;
+  renderTagSave();
+}
+function renderTagSave(){
+  const el = $('#savebox'); if (!el) return;
+  const n = tagEdits.size;
+  el.innerHTML = `<button class="btn primary block" data-act="save-tags" ${!conn.ok || busy || !n ? 'disabled' : ''}>${busy || (n ? `Save tags (${plural(n, 'card')} changed)` : 'Tags saved')}</button>
+    ${!conn.ok ? `<p class="hint">Connect at the top of the page to save.</p>` : ''}
+    ${n ? `<button class="link" data-act="discard-tags">Discard changes</button>` : ''}`;
+}
+async function saveTags(){
+  if (!conn.ok || !tagEdits.size) return;
+  busy = 'Saving…'; renderTagSave();
+  try {
+    const map = new Map(state.tags);
+    for (const [k, t] of tagEdits) map.set(k, t);
+    await commit({[FILES.tags]:tagsCsv(map)}, `Tags: ${plural(tagEdits.size, 'card')} updated`);
+    const n = tagEdits.size; tagEdits = new Map();
+    await reload();
+    flash = {ok:true, html:`Tags saved for ${plural(n, 'card')}. The site updates in about a minute.`};
+  } catch(e){ flash = {ok:false, html:esc(explain(e))}; }
+  busy = ''; renderAll();
 }
 
 /* ---------- events ---------- */
 function renderAll(){
   renderConnect(); renderTabs(); renderLists();
-  ({night:renderNightTab, menu:renderMenuTab, export:renderExportTab})[tab]();
+  const tabs = {night:renderNightTab, menu:renderMenuTab, decks:renderDecksTab};
+  (tabs[tab] || renderNightTab)();
   flash = null;
 }
 const toggle = (arr, v) => { const i = arr.indexOf(v); i < 0 ? arr.push(v) : arr.splice(i, 1); };
@@ -428,6 +479,17 @@ document.addEventListener('click', async e => {
     case 'save-menu': await saveMenuNow(); break;
     case 'clear-menu': if (confirm('Empty the menu for all decks?')){ for (const m of Object.values(menu)){ m.cut = []; m.add = []; m.brief = ''; m.picks = 3; } saveMenu(); renderMenuTab(); } break;
 
+    case 'tag-deck': tagDeck = d.id; renderDecksTab(); break;
+    case 'tag': {
+      const n = b.dataset.card, k = n.toLowerCase(), t = [...tagValue(n)];
+      toggle(t, b.dataset.tag);
+      const order = [...state.rules.roles.map(r => r.tag), ...Object.keys(state.rules.themes)];
+      t.sort((x, y) => order.indexOf(x) - order.indexOf(y));
+      if (JSON.stringify(t) === JSON.stringify(tagsOf(n)) && hasTags(n)) tagEdits.delete(k); else tagEdits.set(k, t);
+      if (!state.tagNames.has(k)) state.tagNames.set(k, n);
+      renderDecksTab(); break; }
+    case 'save-tags': await saveTags(); break;
+    case 'discard-tags': tagEdits = new Map(); renderDecksTab(); break;
     case 'copy': {
       const ta = $('#list-' + d.id);
       try { await navigator.clipboard.writeText(ta.value); } catch { ta.select(); document.execCommand('copy'); }
@@ -447,7 +509,7 @@ async function reload(){
     repo = repoFromLocation() || state.site.repo || '';
     await connect();
     if (conn.ok) await load(ghText);                // then straight from GitHub, so nothing is stale
-    draft = loadDraft(); menu = loadMenu(); menuDeck = state.decks[0].id;
+    draft = loadDraft(); menu = loadMenu(); menuDeck = tagDeck = state.decks[0].id;
     renderAll();
     await reload(); renderAll();
   } catch(e){ $('#panel').innerHTML = `<p class="warn">Could not load data: ${esc(e.message)}</p>`; }

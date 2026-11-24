@@ -5,9 +5,9 @@
 'use strict';
 const {$, esc, state, TYPE_ORDER, BASICS, FLAG_TEXT, fmtDate, fmtShort, joinNames, plural, dot,
        load, loadCards, info, img, pic, typeOf, ready, deckById, hasMenu, nightNo, pColor, cmdAt,
-       deckStats, playerStats, crossStats} = CL;
+       deckStats, playerStats, crossStats, tagsOf, isLand, roleDefs, health} = CL;
 
-const DEFAULT_UI = {who:'decks', metric:'wins', cards:'all'};
+const DEFAULT_UI = {who:'decks', metric:'wins', cards:'all', view:'type'};
 const ui = (() => { try { return Object.assign({}, DEFAULT_UI, JSON.parse(localStorage.getItem('ui-v1'))); } catch { return {...DEFAULT_UI}; } })();
 const saveUi = () => { try { localStorage.setItem('ui-v1', JSON.stringify(ui)); } catch {} };
 let activeDeck = null, menuDeck = null;
@@ -264,6 +264,16 @@ function drawChart(){
 }
 
 /* ---------- the decks today: deck cards are the tabs ---------- */
+const deckSlug = d => d.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+function deckFromHash(){
+  const h = decodeURIComponent(location.hash.slice(1)).toLowerCase();
+  return state.decks.find(d => d.id === h || deckSlug(d) === h);
+}
+function selectDeck(id, scroll){
+  activeDeck = id; renderStrip(); renderDetail();
+  try { history.replaceState(null, '', '#' + deckSlug(deckById(id))); } catch {}
+  if (scroll) $('#decks').scrollIntoView({behavior:'smooth'});
+}
 function renderStrip(){
   $('#deck-strip').innerHTML = state.decks.map(d => {
     const s = deckStats(d);
@@ -272,32 +282,95 @@ function renderStrip(){
       <div class="body"><h3>${esc(d.name)}</h3><p class="cmd">${esc(d.cur)}</p>
         <p class="meta">${plural(s.wins,'win')} · ${d.changed} of ${d.size} cards new</p></div></button>`;
   }).join('');
-  document.querySelectorAll('.deck-card').forEach(b => b.onclick = () => { activeDeck = b.dataset.deck; renderStrip(); renderDetail(); });
+  document.querySelectorAll('.deck-card').forEach(b => b.onclick = () => selectDeck(b.dataset.deck));
+}
+
+/* ---------- deck health: curve, roles against typical counts, colour balance ---------- */
+const MANA = {W:{name:'White', c:'#e9e2c8'}, U:{name:'Blue', c:'#4a90d9'}, B:{name:'Black', c:'#a69aa8'}, R:{name:'Red', c:'#d6513f'}, G:{name:'Green', c:'#3fa36b'}};
+function status(n, typical){
+  if (!typical) return {cls:'', icon:'', text:''};
+  const [lo, hi] = typical;
+  if (n < lo) return {cls:'low', icon:'↓', text:'low'};
+  if (hi != null && n > hi) return {cls:'high', icon:'↑', text:'high'};
+  return {cls:'ok', icon:'✓', text:'ok'};
+}
+const rangeText = t => !t ? '' : t[1] == null ? `${t[0]}+` : `${t[0]}–${t[1]}`;
+function healthPanel(d){
+  const h = health(d);
+  if (!ready()) return `<div class="card pad health"><p class="hint">Loading card data…</p></div>`;
+  // mana curve
+  const max = Math.max(1, ...h.curve), W = 260, H = 120, bw = W / 8;
+  const curve = `<svg viewBox="0 0 ${W} ${H + 18}" class="curve" role="img" aria-label="Mana curve">
+    ${h.curve.map((n, i) => {
+      const bh = n ? Math.max(3, (H - 16) * n / max) : 0, x = i * bw + 4, y = H - bh;
+      return `<g class="cv" data-i="${i}"><rect x="${i * bw}" y="0" width="${bw}" height="${H + 18}" fill="transparent"/>
+        ${n ? `<rect x="${x}" y="${y}" width="${bw - 8}" height="${bh}" rx="3" class="bar"/><text x="${x + (bw - 8) / 2}" y="${y - 4}" text-anchor="middle" class="val">${n}</text>` : ''}
+        <text x="${x + (bw - 8) / 2}" y="${H + 14}" text-anchor="middle" class="tick">${i === 7 ? '7+' : i}</text></g>`;
+    }).join('')}</svg>`;
+  // roles
+  const lands = status(h.lands, state.rules.lands);
+  const roleRow = (r) => { const st = status(r.count, r.typical);
+    return `<li><button class="role ${st.cls}" data-role="${esc(r.tag)}" title="${esc(r.explain || '')}">
+      <span class="r-name">${r.theme ? '<b>' + esc(r.label) + '</b>' : esc(r.label)}</span>
+      <span class="r-n">${r.count}</span>
+      <span class="r-typ" title="typical">${r.typical ? rangeText(r.typical) : ''}</span>
+      <span class="r-st">${st.icon ? `${st.icon} ${st.text}` : ''}</span></button></li>`; };
+  const roles = `<ul class="roles">
+      ${h.roles[0] && h.roles[0].theme ? roleRow(h.roles[0]) : ''}
+      <li><button class="role ${lands.cls}" data-role="__lands" title="Lands in the deck"><span class="r-name">Lands</span><span class="r-n">${h.lands}</span>
+        <span class="r-typ" title="typical">${rangeText(state.rules.lands)}</span><span class="r-st">${lands.icon} ${lands.text}</span></button></li>
+      ${h.roles.filter(r => !r.theme && (r.typical || r.count)).map(roleRow).join('')}
+    </ul>`;
+  // colours: share of coloured pips vs share of land sources
+  const cols = [...d.colors];
+  const pipT = cols.reduce((t, c) => t + h.pips[c], 0) || 1, srcT = cols.reduce((t, c) => t + h.sources[c], 0) || 1;
+  const colours = cols.map(c => {
+    const p = h.pips[c] / pipT, s = h.sources[c] / srcT;
+    return `<div class="col-row" style="--m:${MANA[c].c}" title="${MANA[c].name}: ${h.pips[c]} symbols in costs, ${h.sources[c]} lands make it">
+      <img src="https://svgs.scryfall.io/card-symbols/${c}.svg" alt="${MANA[c].name}">
+      <div class="col-bars"><div class="cb"><span style="width:${p * 100}%"></span></div><div class="cb src"><span style="width:${s * 100}%"></span></div></div>
+      <span class="col-n">${Math.round(p * 100)}% · ${Math.round(s * 100)}%</span></div>`;
+  }).join('');
+  const warn = h.size !== 100 ? `<p class="h-warn">⚠ ${h.size} cards instead of 100</p>` : '';
+  return `<div class="card pad health">${warn}<div class="h-grid">
+      <div><h4 class="card-h">Mana curve</h4>${curve}<p class="note">Average ${h.avgMv.toFixed(1)} mana · ${h.nonland} spells, without commander</p></div>
+      <div><h4 class="card-h">What the deck does <span class="soft">· count · typical</span></h4>${roles}<p class="note">Tap a row to see those cards. Typical counts are a rough guide, not rules.</p></div>
+      ${cols.length > 1 ? `<div><h4 class="card-h">Colour balance</h4>${colours}<p class="note">Top bar: share of mana symbols in costs. Bottom: share of lands that make that colour. Big gaps cause colour trouble.</p></div>` : ''}
+    </div></div>`;
 }
 
 function renderDetail(){
   const d = deckById(activeDeck), s = deckStats(d), cx = crossStats().forDeck(d.id);
   const latest = d.swaps.length ? d.swaps[d.swaps.length - 1].date : null;
   const onlyNew = ui.cards === 'new' && d.changed > 0;
-  const groups = {};
-  for (const [name, e] of d.now){
-    if (onlyNew && !e.added) continue;
-    const g = name === d.cur ? 'Commander' : typeOf(name);
-    (groups[g] = groups[g] || []).push({name, ...e});
-  }
+  const byRole = ui.view === 'role';
   const cardBtn = c => {
     const fresh = c.added && c.added === latest;
     return `<button class="c${fresh ? ' is-new' : c.added ? ' is-added' : ''}" data-card="${esc(c.name)}" title="${esc(c.name)}${c.added ? ` · added night ${nightNo(c.added)}` : ''}">
       ${pic(c.name,'small')}${c.qty > 1 ? `<span class="qty">×${c.qty}</span>` : ''}${fresh ? `<span class="new">new</span>` : c.added ? `<span class="added">N${nightNo(c.added)}</span>` : ''}</button>`;
   };
+  const sortCards = list => list.sort((a,b) => (BASICS.has(a.name) - BASICS.has(b.name)) || (info(a.name).cmc||0) - (info(b.name).cmc||0) || a.name.localeCompare(b.name));
+  const group = (key, label, list, extra = '') => list.length ? `<div class="group" id="grp-${esc(key)}"><h4>${label} <span>${list.reduce((t,c) => t + c.qty, 0)}</span>${extra}</h4><div class="grid">${sortCards(list).map(cardBtn).join('')}</div></div>` : '';
+  const cards = [...d.now].filter(([name, e]) => name !== d.cur && !(onlyNew && !e.added)).map(([name, e]) => ({name, ...e}));
   let main = '';
-  for (const g of TYPE_ORDER){
-    if (!groups[g] || g === 'Commander') continue;
-    const list = groups[g].sort((a,b) => (BASICS.has(a.name) - BASICS.has(b.name)) || (info(a.name).cmc||0) - (info(b.name).cmc||0) || a.name.localeCompare(b.name));
-    const label = {Sorcery:'Sorceries', Other: ready() ? 'Other' : 'Cards'}[g] || g + 's';
-    main += `<div class="group"><h4>${label} <span>${list.reduce((t,c) => t + c.qty, 0)}</span></h4><div class="grid">${list.map(cardBtn).join('')}</div></div>`;
+  if (byRole){
+    const defs = roleDefs(d), seen = new Set();
+    for (const r of defs){
+      const list = cards.filter(c => !isLand(c.name) && tagsOf(c.name).includes(r.tag));
+      list.forEach(c => seen.add(c.name));
+      main += group(r.tag, esc(r.label), list, r.explain ? ` <small class="g-ex">${esc(r.explain)}</small>` : '');
+    }
+    main += group('__other', 'Everything else', cards.filter(c => !isLand(c.name) && !seen.has(c.name)));
+    main += group('__lands', 'Lands', cards.filter(c => isLand(c.name)));
+  } else {
+    const groups = {};
+    for (const c of cards) (groups[typeOf(c.name)] = groups[typeOf(c.name)] || []).push(c);
+    for (const g of TYPE_ORDER){
+      if (!groups[g] || g === 'Commander') continue;
+      main += group(g === 'Land' ? '__lands' : g, {Sorcery:'Sorceries', Other: ready() ? 'Other' : 'Cards'}[g] || g + 's', groups[g]);
+    }
   }
-  if (d.removed.length) main += `<details class="group gy"><summary><h4>Swapped out <span>${d.removed.length}</span></h4></summary><div class="grid">${d.removed.map(r => cardBtn({name:r.name, qty:1})).join('')}</div></details>`;
+  if (!onlyNew && d.removed.length) main += `<details class="group gy"><summary><h4>Swapped out <span>${d.removed.length}</span></h4></summary><div class="grid">${d.removed.map(r => cardBtn({name:r.name, qty:1})).join('')}</div></details>`;
 
   // history, one foldable block per night, newest first and open
   const byNight = [...new Set(d.swaps.map(c => c.date))].reverse();
@@ -318,12 +391,37 @@ function renderDetail(){
         ${cx.most ? `<dt>Played most by</dt><dd>${esc(joinNames(cx.most.names))}</dd>` : ''}
         ${cx.best ? `<dt>Wins with</dt><dd>${esc(joinNames(cx.best.names))}</dd>` : ''}
       </dl>
-      ${d.moxfield ? `<a class="mox" href="${esc(d.moxfield)}" target="_blank" rel="noopener">Open in Moxfield ↗</a>` : ''}
+      <div class="side-links">
+        <button class="mox" data-act="copy-link">Copy link to this deck</button>
+        ${d.moxfield ? `<a class="mox" href="${esc(d.moxfield)}" target="_blank" rel="noopener">Moxfield ↗</a>` : ''}
+      </div>
       <h4 class="card-h hist-h">History</h4>${log}
     </aside>
-    <div><div class="list-head"><h4 class="card-h">The list</h4>${d.changed ? seg('cards', [['all', `All ${d.size}`], ['new', `New ${d.changed}`]], 'Which cards to show') : ''}</div>${main}</div></div>`;
+    <div class="detail-main">${healthPanel(d)}
+      <div class="list-head"><h4 class="card-h">The list</h4><div class="list-ctl">
+        ${seg('view', [['type','By type'], ['role','By role']], 'Group the list')}
+        ${d.changed ? seg('cards', [['all', `All ${d.size}`], ['new', `New ${d.changed}`]], 'Which cards to show') : ''}</div></div>
+      ${main || '<p class="hint">Nothing to show.</p>'}</div></div>`;
   bindSeg($('#deck-detail'), renderDetail);
   bindCards($('#deck-detail'));
+  $('#deck-detail').querySelectorAll('[data-role]').forEach(b => b.onclick = () => {
+    ui.view = 'role'; if (b.dataset.role !== '__lands') ui.cards = 'all'; saveUi(); renderDetail();
+    const g = document.getElementById('grp-' + b.dataset.role);
+    if (g) g.scrollIntoView({behavior:'smooth', block:'start'});
+  });
+  $('#deck-detail').querySelector('[data-act=copy-link]').onclick = async e => {
+    const url = location.href.split('#')[0] + '#' + deckSlug(d), btn = e.currentTarget;
+    try { await navigator.clipboard.writeText(url); btn.textContent = 'Link copied ✓'; }
+    catch { prompt('Copy this link:', url); }
+    setTimeout(() => btn.textContent = 'Copy link to this deck', 1600);
+  };
+  const tip = $('#tip'), h = health(d);
+  $('#deck-detail').querySelectorAll('.cv').forEach(g => {
+    g.onmousemove = e => { const i = +g.dataset.i; if (!h.curve[i]) return;
+      tip.innerHTML = `<b>${i === 7 ? '7+' : i} mana · ${h.curve[i]}</b>${h.curveCards[i].slice(0, 12).map(n => `<div>${esc(n)}</div>`).join('')}${h.curveCards[i].length > 12 ? `<div class="soft">+${h.curveCards[i].length - 12} more</div>` : ''}`;
+      tip.hidden = false; tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8) + 'px'; tip.style.top = (e.clientY + 14) + 'px'; };
+    g.onmouseleave = () => tip.hidden = true;
+  });
 }
 
 /* ---------- modal ---------- */
@@ -344,6 +442,7 @@ function showSwap(c){
 }
 $('#modal').onclick = e => { if (e.target.id === 'modal' || e.target.id === 'modal-close') closeModal(); };
 addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+addEventListener('hashchange', () => { const d = deckFromHash(); if (d && d.id !== activeDeck) selectDeck(d.id, true); });
 
 /* ---------- boot ---------- */
 function renderAll(){
@@ -353,9 +452,11 @@ function renderAll(){
 }
 load().then(() => {
   if (state.site.title){ $('#site-title').textContent = $('#nav-brand').textContent = document.title = state.site.title; }
-  activeDeck = state.decks[0].id;
+  const linked = deckFromHash();
+  activeDeck = (linked || state.decks[0]).id;
   renderAll();                                   // fast first paint
-  return loadCards().finally(renderAll);         // then real images + card types
+  if (linked) $('#decks').scrollIntoView();
+  return loadCards().finally(() => { renderAll(); if (linked) $('#decks').scrollIntoView(); });   // then real images + card data
 }).catch(e => {
   document.querySelector('main').innerHTML = `<p class="warn">Could not load data: ${esc(e.message)}</p>`;
 });
