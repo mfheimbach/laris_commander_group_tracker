@@ -13,7 +13,7 @@ Settings → Pages → Deploy from branch → `main` / root. Every commit is liv
 ## Entering data: the admin page
 Open `admin.html` (linked in the page footer). It works on a phone.
 
-**Connect once per device.** Create a fine-grained GitHub token (Settings → Developer settings → Fine-grained tokens) with *Only select repositories* → this repo, and *Repository permissions → Contents: Read and write*. Paste it into the admin page. It is stored only in that browser and sent only to GitHub. Tokens expire (a year at most), then you create a new one.
+**Connect once per device.** Open the [pre-filled token form](https://github.com/settings/personal-access-tokens/new?name=Commander+Legacy+admin&description=Saves+game+nights+from+the+tracker+admin+page&target_name=mfheimbach&expires_in=366&contents=write) (name, a one-year expiry and Contents write access are already filled in). Under *Repository access* choose *Only select repositories* → this repo, then *Generate token*. The name doesn't matter. Paste the token into the admin page; it is stored only in that browser and sent only to GitHub. When it expires, make a new one the same way.
 
 - **Save a night:** date, who sat at which deck, the winner, the swaps per deck and a quote. Menu options appear as chips to tap; any other card can be typed. Cards are checked against Scryfall (colours, Commander legality, Game Changer). One press commits everything. What you typed survives a reload until it is saved.
 - **Next menu:** per deck, the cards that could go and the cards that could come in, plus a one-line brief. Shown on the site as "Up next". Saving a night clears it.

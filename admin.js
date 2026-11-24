@@ -66,7 +66,7 @@ async function commit(files, message){
   Object.assign(overrides, files);
   return c;
 }
-const explain = e => e.status === 403 ? 'GitHub refused the write. The token needs "Contents: Read and write" for this repository.'
+const explain = e => e.status === 403 ? 'GitHub refused the write. The token needs Contents set to write access for this repository.'
   : e.status === 422 || e.status === 409 ? 'The repository changed while saving. Press save again.'
   : e.status === 401 ? 'GitHub rejected the token. It may have expired.'
   : 'Saving failed: ' + e.message;
@@ -113,9 +113,9 @@ function renderConnect(){
     <h3 class="card-h">Connect once on this device</h3>
     ${conn.msg ? `<p class="warn">${esc(conn.msg)}</p>` : ''}
     <ol class="steps">
-      <li>On GitHub: <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">create a fine-grained token ↗</a></li>
-      <li>Repository access: <b>Only select repositories</b> → ${esc(repo || 'this repository')}</li>
-      <li>Permissions → Repository → <b>Contents: Read and write</b></li>
+      <li><a href="https://github.com/settings/personal-access-tokens/new?name=Commander+Legacy+admin&description=Saves+game+nights+from+the+tracker+admin+page&target_name=mfheimbach&expires_in=366&contents=write" target="_blank" rel="noopener">Open the pre-filled token form on GitHub ↗</a>. Name, expiry and the Contents permission are already set.</li>
+      <li>Under <b>Repository access</b>, choose <b>Only select repositories</b> and pick ${esc(repo.split('/')[1] || 'this repository')}. This is the one thing to set by hand.</li>
+      <li>Check that <b>Contents</b> shows write access (labelled "Read and write" or "Write"), then <b>Generate token</b>.</li>
       <li>Paste the token here. It is stored only in this browser.</li>
     </ol>
     <div class="adder"><input type="password" id="token-in" placeholder="github_pat_…" autocomplete="off"><button class="btn" data-act="connect">Connect</button></div>
