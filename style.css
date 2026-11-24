@@ -48,6 +48,7 @@ h1{font-size:clamp(2.1rem,5.5vw,3.4rem);line-height:1.05}
 
 /* sections */
 section{margin:52px 0}
+.kicker{margin:0 0 4px;font-size:.78rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
 .section-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:8px 24px;margin-bottom:16px}
 h2{font-size:1.55rem}
 
@@ -75,28 +76,6 @@ h2{font-size:1.55rem}
 .opt-txt small{display:block;color:var(--muted);font-size:.8rem}
 .gc{font-size:.72rem;color:#f0a35c;white-space:nowrap}
 
-/* game nights: campaign map */
-.camp{display:flex}
-.camp-labels{flex:none;padding-right:12px}
-.camp-corner{height:44px}
-.camp-label{height:36px;display:flex;align-items:center;font-size:.85rem;font-weight:600;white-space:nowrap}
-.camp-scroll{overflow-x:auto;flex:1;min-width:0;scrollbar-width:thin}
-.camp-grid{display:grid;grid-template-rows:44px;grid-auto-rows:36px;width:max-content}
-.ch,.cc{background:none;border:0;padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center}
-.ch{height:44px;grid-row:1;flex-direction:column;line-height:1.15;border-radius:8px 8px 0 0;color:var(--muted)}
-.ch b{font-size:.85rem;color:var(--text-2)}
-.ch span{font-size:.62rem;white-space:nowrap}
-.cc{gap:2px;font-size:.8rem;border-top:1px solid var(--line)}
-.cc .mk{color:var(--c);font-size:.7rem}
-.cc.won .mk{color:var(--gold);font-size:.95rem}
-.cc.out .mk{color:var(--muted);opacity:.55}
-.cc small{font-size:.66rem;color:var(--muted);font-variant-numeric:tabular-nums}
-.cc small.cmd{color:var(--gold)}
-.ch.sel,.cc.sel{background:var(--surface-2)}
-.ch.sel b{color:var(--gold)}
-.ch:hover b{color:var(--text)}
-.camp-legend{margin:12px 0 0;color:var(--muted)}
-#campaign{margin-bottom:16px}
 
 /* game nights: one night */
 .night-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px}
@@ -350,3 +329,30 @@ details[open]>summary::before{transform:rotate(90deg)}
 .tchip{padding:3px 9px;font-size:.74rem}
 @media (max-width:560px){.trow{grid-template-columns:1fr}}
 .savebox.sticky{position:sticky;bottom:10px;z-index:5;box-shadow:0 8px 30px rgba(0,0,0,.55)}
+
+/* chapter 3: the board */
+.timeline-scroll{overflow-x:auto;scrollbar-width:thin}
+.timeline{display:grid;min-width:100%}
+.tl-corner,.tl-label{position:sticky;left:0;z-index:2;background:var(--surface)}
+.tl-colhead{padding:12px 10px;border:0;border-left:1px solid var(--line);background:none;color:inherit;font:inherit;text-align:left;white-space:nowrap;line-height:1.3}
+.tl-colhead b{display:block;font-size:.85rem}
+.tl-colhead span{font-size:.76rem;color:var(--muted)}
+.tl-night{cursor:pointer}
+.tl-night:hover b{color:var(--gold)}
+.tl-night.sel{background:var(--surface-2)}
+.tl-night.sel b{color:var(--gold)}
+.tl-label{padding:10px 12px;border-top:1px solid var(--line);display:flex;align-items:center;gap:6px;font-weight:600;font-size:.86rem;min-height:92px;box-shadow:1px 0 0 var(--line)}
+.tl-cell{position:relative;border-top:1px solid var(--line);border-left:1px solid var(--line);padding:10px;display:flex;flex-wrap:wrap;align-content:flex-start;gap:8px;min-height:92px}
+.tl-cell.sel{background:rgba(255,255,255,.025)}
+.tl-out{background-image:repeating-linear-gradient(135deg,transparent 0 8px,rgba(255,255,255,.018) 8px 9px)}
+.tl-won{background:linear-gradient(180deg,rgba(217,178,95,.12),transparent 80%)}
+.tl-star{position:absolute;top:6px;right:8px;color:var(--gold);font-size:.85rem}
+.swap{display:flex;align-items:center;background:none;border:0;padding:0;cursor:pointer}
+.swap img,.swap .ph{width:30px;aspect-ratio:488/680;border-radius:3px;display:block;font-size:.45rem;overflow:hidden}
+.swap .out{opacity:.3;filter:grayscale(1);margin-right:-12px;transform:scale(.88)}
+.swap .in{position:relative;box-shadow:-2px 0 0 var(--surface)}
+.swap:hover .in,.swap:focus-visible .in{outline:2px solid var(--text-2);outline-offset:1px}
+.swap.cmdswap .in{outline:2px solid var(--gold);outline-offset:1px}
+.tl-start{width:48px;background:none;border:0;padding:0;cursor:pointer}
+.thumb{width:48px;aspect-ratio:488/680;border-radius:4px;display:block;overflow:hidden}
+@media (max-width:600px){.tl-label{padding:8px;font-size:.78rem}}

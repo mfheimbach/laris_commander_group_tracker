@@ -1,5 +1,5 @@
 /* Commander Legacy — public page. Reads top to bottom:
-   headline → up next (when a menu exists) → game nights → standings → the decks today.
+   headline → 1 the latest night → 2 standings → 3 how the decks evolved → 4 the decks today → 5 the next night (when a menu exists).
    Data and card helpers come from core.js. */
 (() => {
 'use strict';
@@ -76,31 +76,7 @@ function renderUpNext(){
   bindCards($('#upnext-body'));
 }
 
-/* ---------- game nights: a compact campaign map picks the night, the recap shows it ---------- */
-function renderCampaign(){
-  const host = $('#campaign');
-  if (!state.nights.length){ host.innerHTML = ''; return; }
-  const sel = nightIdx ?? state.nights.length - 1;
-  const cell = (d, date, i) => {
-    const gs = state.games.filter(g => g.date === date && g.decks.includes(d.id));
-    const won = gs.some(g => g.winner === d.id), sw = d.swaps.filter(s => s.date === date);
-    const what = won ? 'won' : gs.length ? 'played' : 'sat out';
-    return `<button class="cc ${won ? 'won' : gs.length ? 'played' : 'out'}${i === sel ? ' sel' : ''}" data-n="${i}" style="--c:${d.color}"
-      title="${esc(d.name)}, night ${i+1}: ${what}${sw.length ? `, ${plural(sw.length, 'swap')}` : ''}"><span class="mk">${won ? '★' : gs.length ? '●' : '○'}</span>${sw.length ? `<small class="${sw.some(s => s.isCmd) ? 'cmd' : ''}">${sw.length}</small>` : ''}</button>`;
-  };
-  host.innerHTML = `<div class="camp">
-      <div class="camp-labels"><div class="camp-corner"></div>${state.decks.map(d => `<div class="camp-label">${dot(d.color)}${esc(d.name)}</div>`).join('')}</div>
-      <div class="camp-scroll"><div class="camp-grid" style="grid-template-columns:repeat(${state.nights.length}, 44px)">
-        ${state.nights.map((n, i) => `<button class="ch${i === sel ? ' sel' : ''}" data-n="${i}" title="Night ${i+1} · ${fmtDate(n)}"><b>${i+1}</b><span>${fmtShort(n)}</span></button>`).join('')}
-        ${state.decks.map(d => state.nights.map((n, i) => cell(d, n, i)).join('')).join('')}
-      </div></div>
-    </div>
-    <p class="legend camp-legend"><span><b class="gold">★</b> won</span><span>● played</span><span>○ sat out</span><span>small number = cards swapped</span></p>`;
-  const sc = host.querySelector('.camp-scroll');
-  const selEl = host.querySelector('.ch.sel');
-  if (selEl) sc.scrollLeft = Math.max(0, selEl.offsetLeft - sc.clientWidth + 88);
-  host.querySelectorAll('[data-n]').forEach(b => b.onclick = () => { nightIdx = +b.dataset.n; renderCampaign(); renderNight(); });
-}
+/* ---------- chapter 1: the latest night (arrows step back through older nights) ---------- */
 function renderNight(){
   const host = $('#night');
   if (!state.nights.length){ host.innerHTML = `<div class="card empty">No game nights logged yet.</div>`; return; }
@@ -140,8 +116,35 @@ function renderNight(){
         ${satOut.length && games.length ? `<p class="sat-out">Sat out: ${satOut.map(d => `${dot(d.color)}${esc(d.name)}`).join(' ')}</p>` : ''}</div>
       <div class="card pad"><h3 class="card-h">New cards <span class="soft">· tap one to see what it replaced</span></h3><div class="night-decks">${changes}</div></div>
     </div>`;
-  host.querySelectorAll('[data-step]').forEach(b => b.onclick = () => { nightIdx = Math.max(0, Math.min(last, i + +b.dataset.step)); renderCampaign(); renderNight(); });
+  host.querySelectorAll('[data-step]').forEach(b => b.onclick = () => { nightIdx = Math.max(0, Math.min(last, i + +b.dataset.step)); renderNight(); renderTimeline(); });
   bindCards(host);
+}
+
+/* ---------- chapter 3: the board, decks × nights, every swap as out → in ---------- */
+function renderTimeline(){
+  const el = $('#timeline'), cols = ['start', ...state.nights];
+  const sel = nightIdx ?? state.nights.length - 1, narrow = innerWidth < 600;
+  el.style.gridTemplateColumns = `${narrow ? 92 : 132}px repeat(${cols.length}, minmax(${narrow ? 150 : 176}px, 1fr))`;
+  let h = `<div class="tl-corner"></div>` + cols.map((c, i) => i === 0
+    ? `<div class="tl-colhead"><b>Start</b><span>Out of the box</span></div>`
+    : `<button class="tl-colhead tl-night${i - 1 === sel ? ' sel' : ''}" data-n="${i - 1}" title="Open night ${i} in chapter 1"><b>Night ${i}</b><span>${fmtShort(c)}</span></button>`).join('');
+  for (const d of state.decks){
+    h += `<div class="tl-label" style="--c:${d.color}">${dot(d.color)}<span>${esc(d.name)}</span></div>`;
+    h += cols.map((c, i) => {
+      if (i === 0) return `<div class="tl-cell"><button class="c tl-start" data-card="${esc(d.commander0)}" title="${esc(d.commander0)}">${pic(d.commander0, 'small', 'thumb')}</button></div>`;
+      const won = state.games.some(g => g.date === c && g.winner === d.id);
+      const played = state.games.some(g => g.date === c && g.decks.includes(d.id));
+      const sw = d.swaps.filter(s => s.date === c);
+      return `<div class="tl-cell${won ? ' tl-won' : ''}${i - 1 === sel ? ' sel' : ''}${played ? '' : ' tl-out'}">${won ? '<span class="tl-star" title="Won this night">★</span>' : ''}${sw.map(s =>
+        `<button class="swap${s.isCmd ? ' cmdswap' : ''}" data-swap="${state.changes.indexOf(s)}" title="${esc(s.out || '—')} → ${esc(s.in || '—')}">
+          ${s.out ? pic(s.out, 'small', 'out') : ''}${s.in ? pic(s.in, 'small', 'in') : ''}</button>`).join('')}</div>`;
+    }).join('');
+  }
+  el.innerHTML = h;
+  const sc = el.parentElement;
+  if (!sc._scrolled){ sc.scrollLeft = sc.scrollWidth; sc._scrolled = true; }   // open on the latest night
+  el.querySelectorAll('[data-n]').forEach(b => b.onclick = () => { nightIdx = +b.dataset.n; renderNight(); renderTimeline(); $('#latest').scrollIntoView({behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'}); });
+  bindCards(el);
 }
 
 /* ---------- standings: ranking + race chart, one Decks/Players toggle ---------- */
@@ -442,11 +445,13 @@ function showSwap(c){
 }
 $('#modal').onclick = e => { if (e.target.id === 'modal' || e.target.id === 'modal-close') closeModal(); };
 addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+let lastNarrow = innerWidth < 600;
+addEventListener('resize', () => { const n = innerWidth < 600; if (n !== lastNarrow){ lastNarrow = n; renderTimeline(); } });
 addEventListener('hashchange', () => { const d = deckFromHash(); if (d && d.id !== activeDeck) selectDeck(d.id, true); });
 
 /* ---------- boot ---------- */
 function renderAll(){
-  renderHero(); renderUpNext(); renderCampaign(); renderNight(); renderStandings(); renderStrip(); renderDetail();
+  renderHero(); renderNight(); renderStandings(); renderTimeline(); renderStrip(); renderDetail(); renderUpNext();
   const w = $('#warnings');
   if (state.warnings.length){ w.hidden = false; w.innerHTML = '<b>Data check:</b><br>' + [...new Set(state.warnings)].map(esc).join('<br>'); }
 }
